@@ -65,6 +65,21 @@ export interface CreateDataAssetValues {
   scanResultId?: string;
 }
 
+export interface UpdateDataAssetValues {
+  name: string;
+  ipAddress: string;
+  port: number;
+  sourceType: DataAssetSourceType;
+  status: DataAssetStatus;
+  dataLevel: DataAssetLevel;
+  assetGroupId: string;
+  assetGroupName: string;
+  description?: string;
+  tags?: string[];
+  owner: string;
+  department: string;
+}
+
 export const DATA_ASSET_SOURCE_TYPE_OPTIONS: Array<{
   label: string;
   value: DataAssetSourceType;
@@ -305,3 +320,40 @@ export const syncDataAssetGroupName = (
         : asset,
     ),
   );
+
+export const updateDataAsset = (
+  assetId: string,
+  values: UpdateDataAssetValues,
+): DataAssetRecord | null => {
+  const now = getNowText();
+  let updatedRecord: DataAssetRecord | null = null;
+
+  mutateStore((assets) =>
+    assets.map((asset) => {
+      if (asset.id !== assetId) {
+        return asset;
+      }
+
+      updatedRecord = {
+        ...asset,
+        name: values.name.trim(),
+        ipAddress: values.ipAddress.trim(),
+        port: values.port,
+        sourceType: values.sourceType,
+        status: values.status,
+        dataLevel: values.dataLevel,
+        assetGroupId: values.assetGroupId,
+        assetGroupName: values.assetGroupName,
+        description: values.description?.trim() ?? '',
+        tags: values.tags?.filter(Boolean) ?? [],
+        owner: values.owner.trim(),
+        department: values.department.trim(),
+        updateTime: now,
+      };
+
+      return updatedRecord;
+    }),
+  );
+
+  return updatedRecord ? deepCopy(updatedRecord) : null;
+};

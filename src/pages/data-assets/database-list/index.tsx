@@ -20,6 +20,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Row,
   Select,
@@ -41,9 +42,12 @@ import {
   type AssetGroupFormValues,
 } from '@/services/data-assets/assetGroupStore';
 import {
+  DATA_ASSET_SOURCE_TYPE_OPTIONS,
   listDataAssets,
   syncDataAssetGroupName,
+  updateDataAsset,
   type DataAssetRecord,
+  type UpdateDataAssetValues,
 } from '@/services/data-assets/dataAssetStore';
 
 const { Search, TextArea } = Input;
@@ -53,6 +57,8 @@ interface AssetGroupNode extends AssetGroup {
   children: AssetGroupNode[];
   isVirtualRoot?: boolean;
 }
+
+interface DataAssetEditFormValues extends Omit<UpdateDataAssetValues, 'assetGroupName'> {}
 
 type GroupModalMode = 'create-child' | 'edit';
 
@@ -335,6 +341,7 @@ const DataAssetList: React.FC = () => {
   const navigate = useNavigate();
   const [messageApi, contextHolder] = message.useMessage();
   const [form] = Form.useForm<AssetGroupFormValues>();
+  const [assetForm] = Form.useForm<DataAssetEditFormValues>();
   const [groups, setGroups] = useState<AssetGroup[]>(() => listAssetGroups());
   const [assets, setAssets] = useState<DataAssetRecord[]>(() => listDataAssets());
   const [treeKeyword, setTreeKeyword] = useState('');
@@ -345,6 +352,8 @@ const DataAssetList: React.FC = () => {
   const [groupModalMode, setGroupModalMode] = useState<GroupModalMode>('create-child');
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [targetParentId, setTargetParentId] = useState<string | null>(null);
+  const [assetModalOpen, setAssetModalOpen] = useState(false);
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const tableFilterParamsRef = useRef<Record<string, unknown>>({});
 
   const rootGroupIds = useMemo(
@@ -447,6 +456,14 @@ const DataAssetList: React.FC = () => {
       }, {}),
     [groups],
   );
+  const assetGroupOptions = useMemo(
+    () =>
+      Object.entries(assetGroupPathById).map(([value, label]) => ({
+        value,
+        label,
+      })),
+    [assetGroupPathById],
+  );
 
   const filterAssetsByParams = (
     dataAssets: DataAssetRecord[],
@@ -487,6 +504,12 @@ const DataAssetList: React.FC = () => {
     setEditingGroupId(null);
     setTargetParentId(null);
     form.resetFields();
+  };
+
+  const closeAssetModal = () => {
+    setAssetModalOpen(false);
+    setEditingAssetId(null);
+    assetForm.resetFields();
   };
 
   const handleRefresh = () => {
@@ -621,6 +644,56 @@ const DataAssetList: React.FC = () => {
         messageApi.success('分组已删除');
       },
     });
+  };
+
+  const handleViewAssetDetail = (record: DataAssetRecord) => {
+    const search = new URLSearchParams({
+      assetId: record.id,
+      assetName: record.name,
+    });
+
+    navigate(`/data-overview/table-data-list?${search.toString()}`);
+  };
+
+  const handleOpenAssetEdit = (record: DataAssetRecord) => {
+    setEditingAssetId(record.id);
+    setAssetModalOpen(true);
+    assetForm.setFieldsValue({
+      name: record.name,
+      ipAddress: record.ipAddress,
+      port: record.port,
+      sourceType: record.sourceType,
+      status: record.status,
+      dataLevel: record.dataLevel,
+      assetGroupId: record.assetGroupId,
+      description: record.description,
+      tags: record.tags,
+      owner: record.owner,
+      department: record.department,
+    });
+  };
+
+  const handleSubmitAssetEdit = async () => {
+    if (!editingAssetId) {
+      return;
+    }
+
+    const values = await assetForm.validateFields();
+    const assetGroupName =
+      assetGroupPathById[values.assetGroupId] ?? '未分组';
+    const updatedAsset = updateDataAsset(editingAssetId, {
+      ...values,
+      assetGroupName,
+    });
+
+    if (!updatedAsset) {
+      messageApi.error('未找到要编辑的数据资产');
+      return;
+    }
+
+    refreshPageData();
+    closeAssetModal();
+    messageApi.success('数据资产已更新');
   };
 
   const handleCreateImportTask = () => {
@@ -832,7 +905,7 @@ const DataAssetList: React.FC = () => {
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
-              onClick={() => messageApi.info(`查看详情: ${record.name}`)}
+              onClick={() => handleViewAssetDetail(record)}
             >
               查看详情
             </Button>
@@ -840,17 +913,9 @@ const DataAssetList: React.FC = () => {
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
-              onClick={() => messageApi.info(`编辑: ${record.name}`)}
+              onClick={() => handleOpenAssetEdit(record)}
             >
               编辑
-            </Button>
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0, margin: 0 }}
-              onClick={() => messageApi.info(`同步: ${record.name}`)}
-            >
-              同步
             </Button>
           </div>
         ),
@@ -1091,6 +1156,133 @@ const DataAssetList: React.FC = () => {
                 { label: '归档', value: 'archived' },
               ]}
             />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        destroyOnClose
+        open={assetModalOpen}
+        title="编辑数据资产"
+        okText="保存"
+        cancelText="取消"
+        onCancel={closeAssetModal}
+        onOk={() => {
+          void handleSubmitAssetEdit();
+        }}
+      >
+        <Form form={assetForm} layout="vertical">
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="数据资产名称"
+                name="name"
+                rules={[{ required: true, message: '请输入数据资产名称' }]}
+              >
+                <Input placeholder="请输入数据资产名称" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="数据源类型"
+                name="sourceType"
+                rules={[{ required: true, message: '请选择数据源类型' }]}
+              >
+                <Select options={DATA_ASSET_SOURCE_TYPE_OPTIONS} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="IP 地址"
+                name="ipAddress"
+                rules={[{ required: true, message: '请输入 IP 地址' }]}
+              >
+                <Input placeholder="请输入 IP 地址" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="端口"
+                name="port"
+                rules={[{ required: true, message: '请输入端口' }]}
+              >
+                <InputNumber min={0} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="资产状态"
+                name="status"
+                rules={[{ required: true, message: '请选择资产状态' }]}
+              >
+                <Select
+                  options={[
+                    { label: '活跃', value: 'active' },
+                    { label: '非活跃', value: 'inactive' },
+                    { label: '已归档', value: 'archived' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="数据级别"
+                name="dataLevel"
+                rules={[{ required: true, message: '请选择数据级别' }]}
+              >
+                <Select
+                  options={[
+                    { label: '公开', value: 'public' },
+                    { label: '内部', value: 'internal' },
+                    { label: '机密', value: 'confidential' },
+                    { label: '秘密', value: 'secret' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            label="资产分组"
+            name="assetGroupId"
+            rules={[{ required: true, message: '请选择资产分组' }]}
+          >
+            <Select showSearch optionFilterProp="label" options={assetGroupOptions} />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                label="负责人"
+                name="owner"
+                rules={[{ required: true, message: '请输入负责人' }]}
+              >
+                <Input placeholder="请输入负责人" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                label="所属部门"
+                name="department"
+                rules={[{ required: true, message: '请输入所属部门' }]}
+              >
+                <Input placeholder="请输入所属部门" />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item label="标签" name="tags">
+            <Select mode="tags" tokenSeparators={[',', '，']} placeholder="请输入或选择标签" />
+          </Form.Item>
+
+          <Form.Item label="描述" name="description">
+            <TextArea rows={4} maxLength={300} showCount placeholder="请输入资产描述" />
           </Form.Item>
         </Form>
       </Modal>
