@@ -1,0 +1,297 @@
+.bigScreen {
+  --screen-bg: #07121f;
+  --screen-panel: rgba(10, 32, 54, 0.82);
+  --screen-panel-strong: rgba(10, 32, 54, 0.95);
+  --screen-border: rgba(90, 180, 255, 0.22);
+  --screen-text: #edf6ff;
+  --screen-subtext: rgba(237, 246, 255, 0.72);
+  --screen-cyan: #27d8ff;
+  --screen-blue: #4d8dff;
+  --screen-green: #59f0b0;
+  --screen-orange: #ffb457;
+  --screen-red: #ff6d78;
+  --screen-magenta: #ff5ec4;
+  min-height: calc(100vh - 48px);
+  padding: 20px 20px 28px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(39, 216, 255, 0.16), transparent 30%),
+    radial-gradient(circle at 85% 10%, rgba(255, 180, 87, 0.12), transparent 28%),
+    linear-gradient(180deg, #08101a 0%, #050b13 45%, #04070e 100%);
+  color: var(--screen-text);
+  position: relative;
+  overflow: hidden;
+}
+
+.bigScreen::before,
+.bigScreen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bigScreen::before {
+  background-image:
+    linear-gradient(rgba(39, 216, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(39, 216, 255, 0.04) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.8), transparent);
+}
+
+.bigScreen::after {
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(39, 216, 255, 0.12) 50%, transparent 100%);
+  width: 38%;
+  transform: translateX(-50%);
+  animation: sweep 10s linear infinite;
+  filter: blur(20px);
+  opacity: 0.35;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-60%) translateY(-10%);
+  }
+  to {
+    transform: translateX(240%) translateY(-10%);
+  }
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--screen-cyan);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0 !important;
+  color: var(--screen-text) !important;
+  font-size: 34px !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 24px rgba(39, 216, 255, 0.18);
+}
+
+.subtitle {
+  max-width: 760px;
+  color: var(--screen-subtext) !important;
+  font-size: 14px;
+}
+
+.clockCard {
+  min-width: 250px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid var(--screen-border);
+  background: linear-gradient(180deg, rgba(11, 31, 52, 0.88), rgba(8, 22, 39, 0.9));
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+}
+
+.clockLabel {
+  color: var(--screen-subtext);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.clockTime {
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', ui-monospace, monospace;
+  color: var(--screen-text);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.clockDate {
+  color: var(--screen-cyan);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.summaryCard {
+  height: 100%;
+  background: linear-gradient(180deg, rgba(10, 32, 54, 0.88), rgba(8, 24, 42, 0.88));
+  border: 1px solid var(--screen-border);
+  border-radius: 18px;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.summaryCard :global(.ant-card-body) {
+  padding: 18px 18px 16px;
+}
+
+.summaryHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.summaryTitle {
+  color: var(--screen-subtext);
+  font-size: 13px;
+}
+
+.summaryValue {
+  color: var(--screen-text);
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.summaryMeta {
+  color: var(--screen-subtext);
+  font-size: 12px;
+}
+
+.summaryDelta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #05131f;
+}
+
+.sectionCard {
+  height: 100%;
+  border: 1px solid var(--screen-border);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(13, 30, 50, 0.95), rgba(7, 18, 31, 0.94));
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+}
+
+.sectionCard :global(.ant-card-head) {
+  border-bottom: 1px solid rgba(90, 180, 255, 0.12);
+  padding: 0 18px;
+  min-height: 56px;
+}
+
+.sectionCard :global(.ant-card-head-title) {
+  color: var(--screen-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sectionCard :global(.ant-card-body) {
+  padding: 14px 16px 12px;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: 10px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--screen-subtext);
+  font-size: 12px;
+}
+
+.legendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: 0 0 16px currentColor;
+}
+
+.eventList {
+  display: grid;
+  gap: 10px;
+}
+
+.eventRow {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(90, 180, 255, 0.12);
+  background: rgba(8, 24, 42, 0.82);
+}
+
+.eventMain {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.eventTitle {
+  color: var(--screen-text);
+  font-weight: 600;
+}
+
+.eventMeta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--screen-subtext);
+  font-size: 12px;
+}
+
+.bottomGrid {
+  margin-top: 16px;
+}
+
+.chartWrap {
+  min-height: 260px;
+}
+
+.screenTag {
+  border-radius: 999px;
+  padding-inline: 10px;
+}
+
+@media (max-width: 1200px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .clockCard {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .bigScreen {
+    padding: 14px 14px 20px;
+  }
+
+  .title {
+    font-size: 26px !important;
+  }
+
+  .summaryValue {
+    font-size: 24px;
+  }
+
+  .clockTime {
+    font-size: 24px;
+  }
+}
