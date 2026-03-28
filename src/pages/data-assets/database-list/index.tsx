@@ -116,11 +116,9 @@ const formatNumericValue = (value: number | string | undefined | null) => {
 
 const getDefaultSelectedGroupId = () => ROOT_GROUP_ID;
 
-const getDefaultExpandedGroupIds = () => [
+const getDefaultExpandedGroupIds = (groups: AssetGroup[] = []) => [
   ROOT_GROUP_ID,
-  ...listAssetGroups()
-    .filter((group) => group.parentId === null)
-    .map((group) => group.id),
+  ...groups.filter((group) => group.parentId === null).map((group) => group.id),
 ];
 
 const buildGroupTree = (groups: AssetGroup[], parentId: string | null = null): AssetGroupNode[] =>
@@ -342,8 +340,8 @@ const DataAssetList: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const [form] = Form.useForm<AssetGroupFormValues>();
   const [assetForm] = Form.useForm<DataAssetEditFormValues>();
-  const [groups, setGroups] = useState<AssetGroup[]>(() => listAssetGroups());
-  const [assets, setAssets] = useState<DataAssetRecord[]>(() => listDataAssets());
+  const [groups, setGroups] = useState<AssetGroup[]>([]);
+  const [assets, setAssets] = useState<DataAssetRecord[]>([]);
   const [treeKeyword, setTreeKeyword] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>(() => getDefaultSelectedGroupId());
   const [expandedKeys, setExpandedKeys] = useState<string[]>(() => getDefaultExpandedGroupIds());

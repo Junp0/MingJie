@@ -1,8 +1,4 @@
-// 数据资产导入任务的本地仓库。当前使用 localStorage，后续接入后端时只需要替换这些方法。
-import {
-  getClassificationTaskById,
-  updateClassificationTaskStatus,
-} from '@/services/data-classification/classificationTaskStore';
+import { request } from '@/services/request';
 
 export type ImportSourceType = 'database' | 'file' | 'api' | 'message_queue';
 export type ImportTaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
@@ -51,30 +47,42 @@ export interface DataAssetImportFormValues {
   description?: string;
 }
 
-const STORAGE_KEY = 'data-asset-import-store-v1';
-
-let memoryStore: DataAssetImportRecord[] | null = null;
-
-const deepCopy = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
-
-const getNowText = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+type BackendImportTask = {
+  id: string;
+  sourceName: string;
+  sourceType: string;
+  ipAddress: string;
+  port: number;
+  databaseName?: string | null;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  progress: number;
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assetGroupId: string;
+  creatorId?: string | null;
+  assetGroup?: { id: string; name: string };
+  creator?: { id: string; name: string } | null;
+  classificationTask?: { id: string } | null;
 };
 
-const createId = (prefix: string) =>
-  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const formatDateTime = (value?: string) => (value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '');
 
-const getScheduleLabel = (
-  scheduleMode: ImportScheduleMode,
-  executeAt?: string,
-): string => {
+const statusMap: Record<BackendImportTask['status'], ImportTaskStatus> = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  SUCCESS: 'completed',
+  FAILED: 'failed',
+};
+
+const reverseStatusMap: Record<Exclude<ImportTaskStatus, 'stopped'>, BackendImportTask['status']> = {
+  pending: 'PENDING',
+  running: 'RUNNING',
+  completed: 'SUCCESS',
+  failed: 'FAILED',
+};
+
+const buildScheduleLabel = (scheduleMode: ImportScheduleMode, executeAt?: string) => {
   switch (scheduleMode) {
     case 'single':
       return executeAt ? `单次同步 ${executeAt}` : '单次同步';
@@ -89,240 +97,89 @@ const getScheduleLabel = (
   }
 };
 
-const createInitialImports = (): DataAssetImportRecord[] => [
-  {
-    id: 'import-1',
-    sourceType: 'database',
-    sourceName: 'user_management_db',
-    databaseType: 'MySQL',
-    sourceConfig: 'MySQL://192.168.1.100:3306',
-    ipAddress: '192.168.1.100',
-    port: 3306,
-    username: 'root',
-    password: '******',
-    status: 'completed',
-    progress: 100,
-    assetGroupId: 'user-domain',
-    assetGroupName: '用户数据域',
-    createTime: '2026-03-15 10:00:00',
-    updateTime: '2026-03-21 16:30:00',
-    startTime: '2026-03-15 10:30:00',
-    endTime: '2026-03-15 11:30:00',
-    lastSyncTime: '2026-03-21 16:30:00',
-    scheduleMode: 'daily',
-    scheduleLabel: '每日（首次：2026-03-15 10:30:00）',
-    executeAt: '2026-03-15 10:30:00',
-    description: '用户基础数据导入任务',
-    classificationTaskEnabled: true,
-    classificationTaskId: 'task-1',
-    creator: '李四',
-  },
-  {
-    id: 'import-2',
-    sourceType: 'database',
-    sourceName: 'ecommerce_db',
-    databaseType: 'MySQL',
-    sourceConfig: 'MySQL://192.168.1.101:3306',
-    ipAddress: '192.168.1.101',
-    port: 3306,
-    username: 'sync_user',
-    password: '******',
-    status: 'running',
-    progress: 65,
-    assetGroupId: 'trade-domain',
-    assetGroupName: '交易经营域',
-    createTime: '2026-03-20 14:30:00',
-    updateTime: '2026-03-21 15:45:00',
-    startTime: '2026-03-21 02:00:00',
-    endTime: '',
-    lastSyncTime: '2026-03-21 15:45:00',
-    scheduleMode: 'monthly',
-    scheduleLabel: '每月（首次：2026-03-21 02:00:00）',
-    executeAt: '2026-03-21 02:00:00',
-    description: '订单数据增量导入任务',
-    classificationTaskEnabled: false,
-    creator: '李四',
-  },
-  {
-    id: 'import-3',
-    sourceType: 'file',
-    sourceName: 'access_logs.csv',
-    databaseType: 'CSV文件',
-    sourceConfig: '/data/logs/access_logs.csv',
-    ipAddress: '192.168.1.102',
-    port: 22,
-    username: 'ops_reader',
-    password: '******',
-    status: 'pending',
-    progress: 0,
-    assetGroupId: 'infra-log',
-    assetGroupName: '日志监控组',
-    createTime: '2026-03-21 09:15:00',
-    updateTime: '2026-03-21 09:15:00',
-    startTime: '',
-    endTime: '',
-    lastSyncTime: '',
-    scheduleMode: 'single',
-    scheduleLabel: '单次同步 2026-03-26 09:00:00',
-    executeAt: '2026-03-26 09:00:00',
-    description: '访问日志文件导入任务',
-    classificationTaskEnabled: false,
-    creator: '王五',
-  },
-];
+const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => ({
+  id: item.id,
+  sourceType: 'database',
+  sourceName: item.sourceName,
+  databaseType: item.sourceType?.toUpperCase?.() || 'DATABASE',
+  sourceConfig: `${item.sourceType}://${item.ipAddress}:${item.port}`,
+  ipAddress: item.ipAddress,
+  port: item.port,
+  username: item.creator?.name ?? 'app',
+  password: '******',
+  status: statusMap[item.status],
+  progress: item.progress,
+  assetGroupId: item.assetGroupId,
+  assetGroupName: item.assetGroup?.name ?? '',
+  createTime: formatDateTime(item.createdAt),
+  updateTime: formatDateTime(item.updatedAt),
+  startTime: item.status === 'RUNNING' || item.status === 'SUCCESS' ? formatDateTime(item.createdAt) : '',
+  endTime: item.status === 'SUCCESS' || item.status === 'FAILED' ? formatDateTime(item.updatedAt) : '',
+  lastSyncTime: item.status === 'SUCCESS' ? formatDateTime(item.updatedAt) : '',
+  scheduleMode: 'single',
+  scheduleLabel: buildScheduleLabel('single', formatDateTime(item.createdAt)),
+  executeAt: formatDateTime(item.createdAt),
+  description: item.description ?? '',
+  classificationTaskEnabled: Boolean(item.classificationTask?.id),
+  classificationTaskId: item.classificationTask?.id ?? undefined,
+  creator: item.creator?.name ?? '当前用户',
+});
 
-const readStore = (): DataAssetImportRecord[] => {
-  if (typeof window === 'undefined') {
-    if (!memoryStore) {
-      memoryStore = createInitialImports();
-    }
-    return deepCopy(memoryStore);
-  }
-
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    const initial = createInitialImports();
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
-    return deepCopy(initial);
-  }
-
-  try {
-    return deepCopy(JSON.parse(raw) as DataAssetImportRecord[]);
-  } catch (error) {
-    const initial = createInitialImports();
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
-    return deepCopy(initial);
-  }
+export const listImportTasks = async (): Promise<DataAssetImportRecord[]> => {
+  const data = await request<BackendImportTask[]>('/api/import-tasks');
+  return data.map(mapImportTask).sort((left, right) => right.createTime.localeCompare(left.createTime));
 };
 
-const writeStore = (imports: DataAssetImportRecord[]) => {
-  if (typeof window === 'undefined') {
-    memoryStore = deepCopy(imports);
-    return;
-  }
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(imports));
+export const getImportTaskById = async (taskId: string): Promise<DataAssetImportRecord | null> => {
+  const tasks = await listImportTasks();
+  return tasks.find((item) => item.id === taskId) ?? null;
 };
 
-const mutateStore = (
-  updater: (imports: DataAssetImportRecord[]) => DataAssetImportRecord[],
-): DataAssetImportRecord[] => {
-  const imports = readStore();
-  const nextImports = updater(imports);
-  writeStore(nextImports);
-  return deepCopy(nextImports);
-};
-
-export const listImportTasks = (): DataAssetImportRecord[] =>
-  readStore().sort((left, right) => right.createTime.localeCompare(left.createTime));
-
-export const getImportTaskById = (taskId: string): DataAssetImportRecord | null => {
-  const task = readStore().find((item) => item.id === taskId);
-  return task ? deepCopy(task) : null;
-};
-
-export const createImportTask = (
+export const createImportTask = async (
   values: DataAssetImportFormValues,
   options?: { classificationTaskId?: string; creator?: string },
-): DataAssetImportRecord => {
-  const now = getNowText();
-  const record: DataAssetImportRecord = {
-    id: createId('import'),
-    sourceType: values.sourceType,
-    sourceName: values.sourceName.trim(),
-    databaseType: values.databaseType.trim(),
-    sourceConfig: `${values.databaseType}://${values.ipAddress}:${values.port}`,
-    ipAddress: values.ipAddress.trim(),
-    port: values.port,
-    username: values.username.trim(),
-    password: values.password,
-    status: 'pending',
-    progress: 0,
-    assetGroupId: values.assetGroupId,
-    assetGroupName: values.assetGroupName,
-    createTime: now,
-    updateTime: now,
-    startTime: '',
-    endTime: '',
-    lastSyncTime: '',
-    scheduleMode: values.scheduleMode,
-    scheduleLabel: getScheduleLabel(values.scheduleMode, values.executeAt),
-    executeAt: values.executeAt,
-    description: values.description?.trim() ?? '',
-    classificationTaskEnabled: Boolean(options?.classificationTaskId),
-    classificationTaskId: options?.classificationTaskId,
-    creator: options?.creator ?? '当前用户',
-  };
-
-  mutateStore((imports) => [record, ...imports]);
-  return deepCopy(record);
+): Promise<DataAssetImportRecord> => {
+  const data = await request<BackendImportTask>('/api/import-tasks', {
+    method: 'POST',
+    data: {
+      sourceName: values.sourceName.trim(),
+      sourceType: values.databaseType.toLowerCase(),
+      ipAddress: values.ipAddress.trim(),
+      port: values.port,
+      databaseName: values.sourceName.trim(),
+      assetGroupId: values.assetGroupId,
+      description: values.description?.trim() ?? '',
+      progress: 0,
+      status: 'PENDING',
+    },
+  });
+  return mapImportTask({ ...data, classificationTask: options?.classificationTaskId ? { id: options.classificationTaskId } : data.classificationTask });
 };
 
-export const updateImportTaskStatus = (
+export const updateImportTaskStatus = async (
   taskId: string,
   status: ImportTaskStatus,
-): DataAssetImportRecord | null => {
-  let updatedTask: DataAssetImportRecord | null = null;
-  let linkedClassificationTaskId: string | undefined;
-
-  mutateStore((imports) =>
-    imports.map((task) => {
-      if (task.id !== taskId) {
-        return task;
-      }
-
-      updatedTask = {
-        ...task,
-        status,
-        progress:
-          status === 'running'
-            ? Math.max(task.progress, 5)
-            : status === 'completed'
-              ? 100
-              : task.progress,
-        startTime: status === 'running' && !task.startTime ? getNowText() : task.startTime,
-        endTime: status === 'completed' ? getNowText() : status === 'failed' ? getNowText() : task.endTime,
-        lastSyncTime: status === 'completed' ? getNowText() : task.lastSyncTime,
-        updateTime: getNowText(),
-      };
-      linkedClassificationTaskId = updatedTask.classificationTaskId;
-
-      return updatedTask;
-    }),
-  );
-
-  if (status === 'completed' && linkedClassificationTaskId) {
-    const linkedTask = getClassificationTaskById(linkedClassificationTaskId);
-    if (linkedTask && ['pending', 'stopped'].includes(linkedTask.status)) {
-      updateClassificationTaskStatus(linkedTask.id, 'running');
-    }
-  }
-
-  return updatedTask ? deepCopy(updatedTask) : null;
+): Promise<DataAssetImportRecord | null> => {
+  if (status === 'stopped') return getImportTaskById(taskId);
+  const data = await request<BackendImportTask>(`/api/import-tasks/${taskId}`, {
+    method: 'PATCH',
+    data: {
+      status: reverseStatusMap[status as Exclude<ImportTaskStatus, 'stopped'>],
+      progress: status === 'completed' ? 100 : status === 'running' ? 50 : 0,
+    },
+  });
+  return mapImportTask(data);
 };
 
-export const linkClassificationTaskToImport = (
+export const linkClassificationTaskToImport = async (
   importTaskId: string,
   classificationTaskId: string,
-): DataAssetImportRecord | null => {
-  let updatedTask: DataAssetImportRecord | null = null;
-
-  mutateStore((imports) =>
-    imports.map((task) => {
-      if (task.id !== importTaskId) {
-        return task;
-      }
-
-      updatedTask = {
-        ...task,
-        classificationTaskEnabled: true,
-        classificationTaskId,
-        updateTime: getNowText(),
-      };
-
-      return updatedTask;
-    }),
-  );
-
-  return updatedTask ? deepCopy(updatedTask) : null;
+): Promise<DataAssetImportRecord | null> => {
+  const task = await getImportTaskById(importTaskId);
+  if (!task) return null;
+  return {
+    ...task,
+    classificationTaskEnabled: true,
+    classificationTaskId,
+  };
 };

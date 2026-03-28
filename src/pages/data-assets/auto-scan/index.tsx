@@ -75,10 +75,14 @@ const formatRuleIdentity = (record: Pick<AutoScanRule, 'ipRange' | 'portRange'>)
   `${record.ipRange} / ${formatPortRange(record.portRange)}`;
 
 const AutoScanDataAssetsPage: React.FC = () => {
+  React.useEffect(() => {
+    refreshPageData();
+  }, []);
+
   const navigate = useNavigate();
   const [messageApi, contextHolder] = message.useMessage();
-  const [rules, setRules] = useState<AutoScanRule[]>(() => listAutoScanRules());
-  const [results, setResults] = useState<AutoScanResult[]>(() => listAutoScanResults());
+  const [rules, setRules] = useState<AutoScanRule[]>([]);
+  const [results, setResults] = useState<AutoScanResult[]>([]);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutoScanResult['status']>('all');
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
@@ -88,9 +92,10 @@ const AutoScanDataAssetsPage: React.FC = () => {
   const [ruleForm] = Form.useForm<RuleFormValues>();
   const [ignoreForm] = Form.useForm<IgnoreFormValues>();
 
-  const refreshPageData = () => {
-    setRules(listAutoScanRules());
-    setResults(listAutoScanResults());
+  const refreshPageData = async () => {
+    const [ruleData, resultData] = await Promise.all([listAutoScanRules(), listAutoScanResults()]);
+    setRules(ruleData);
+    setResults(resultData);
   };
 
   const navigateToImportForm = (record: AutoScanResult) => {

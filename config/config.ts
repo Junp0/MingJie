@@ -166,15 +166,14 @@ export default defineConfig({
       projectName: 'swagger',
     },
   ],
-  mock: {
-    include: ['mock/**/*', 'src/pages/**/_mock.ts'],
-  },
+  mock: false,
   /**
    * @name 是否开启 mako
    * @description 使用 mako 极速研发
    * @doc https://umijs.org/docs/api/config#mako
    */
-  mako: {},
+  // Temporarily disable mako during local full-stack debugging; default bundler is more stable here.
+  // mako: {},
   esbuildMinifyIIFE: true,
   requestRecord: {},
   exportStatic: {},

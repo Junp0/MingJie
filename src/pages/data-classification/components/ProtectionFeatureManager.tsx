@@ -76,8 +76,9 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
   const [modalOpen, setModalOpen] = useState(false);
   const [editingFeature, setEditingFeature] = useState<ProtectionFeatureRecord | null>(null);
 
-  const loadFeatures = () => {
-    setFeatures(listProtectionFeatures(featureType));
+  const loadFeatures = async () => {
+    const data = await listProtectionFeatures(featureType);
+    setFeatures(data);
   };
 
   useEffect(() => {
@@ -182,14 +183,14 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
     }
 
     if (editingFeature) {
-      const updated = updateProtectionFeature(editingFeature.id, normalizedValues);
+      const updated = await updateProtectionFeature(editingFeature.id, normalizedValues);
       if (!updated) {
         messageApi.error('特征更新失败，请重试');
         return;
       }
       messageApi.success('特征已更新');
     } else {
-      createProtectionFeature(featureType, normalizedValues);
+      await createProtectionFeature(featureType, normalizedValues);
       messageApi.success('特征已创建');
     }
 
@@ -206,8 +207,8 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const deleted = deleteProtectionFeature(feature.id);
+      onOk: async () => {
+        const deleted = await deleteProtectionFeature(feature.id);
         if (!deleted) {
           messageApi.error('删除失败，请重试');
           return;
@@ -219,9 +220,9 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
     });
   };
 
-  const handleStatusChange = (feature: ProtectionFeatureRecord, checked: boolean) => {
+  const handleStatusChange = async (feature: ProtectionFeatureRecord, checked: boolean) => {
     const nextStatus = checked ? 'active' : 'inactive';
-    const updated = updateProtectionFeatureStatus(feature.id, nextStatus);
+    const updated = await updateProtectionFeatureStatus(feature.id, nextStatus);
     if (!updated) {
       messageApi.error('状态更新失败，请重试');
       return;

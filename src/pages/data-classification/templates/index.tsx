@@ -18,8 +18,9 @@ const ClassificationTemplates: React.FC = () => {
   const [templates, setTemplates] = useState<ClassificationTemplateSummary[]>([]);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
-  const loadTemplates = () => {
-    setTemplates(listClassificationTemplates());
+  const loadTemplates = async () => {
+    const data = await listClassificationTemplates();
+    setTemplates(data);
   };
 
   useEffect(() => {
@@ -34,14 +35,14 @@ const ClassificationTemplates: React.FC = () => {
     setEditingTemplateId(record.id);
   };
 
-  const handleCopy = (record: ClassificationTemplateSummary) => {
-    const duplicated = duplicateClassificationTemplate(record.id);
+  const handleCopy = async (record: ClassificationTemplateSummary) => {
+    const duplicated = await duplicateClassificationTemplate(record.id);
     if (!duplicated) {
       messageApi.error('复制模板失败，请刷新后重试');
       return;
     }
 
-    loadTemplates();
+    await loadTemplates();
     messageApi.success(`已复制模板：${record.templateName}`);
   };
 
@@ -52,14 +53,14 @@ const ClassificationTemplates: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const deleted = deleteClassificationTemplate(record.id);
+      onOk: async () => {
+        const deleted = await deleteClassificationTemplate(record.id);
         if (!deleted) {
           messageApi.error('删除失败，请刷新后重试');
           return;
         }
 
-        loadTemplates();
+        await loadTemplates();
         messageApi.success(`已删除模板：${record.templateName}`);
       },
     });
@@ -74,14 +75,14 @@ const ClassificationTemplates: React.FC = () => {
       content: `确定要${actionText}模板“${record.templateName}”吗？`,
       okText: '确认',
       cancelText: '取消',
-      onOk: () => {
-        const updated = updateClassificationTemplateStatus(record.id, nextStatus);
+      onOk: async () => {
+        const updated = await updateClassificationTemplateStatus(record.id, nextStatus);
         if (!updated) {
           messageApi.error(`模板${actionText}失败，请重试`);
           return;
         }
 
-        loadTemplates();
+        await loadTemplates();
         messageApi.success(`模板${actionText}成功`);
       },
     });

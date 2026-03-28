@@ -294,18 +294,18 @@ const TemplateDetail: React.FC = () => {
     });
   };
 
-  const reloadTemplate = (options?: { selectedCategoryId?: string | null; expandIds?: string[] }) => {
+  const reloadTemplate = async (options?: { selectedCategoryId?: string | null; expandIds?: string[] }) => {
     if (!id) {
       syncTemplateState(null);
       return;
     }
 
-    const nextTemplate = getClassificationTemplateById(id);
+    const nextTemplate = await getClassificationTemplateById(id);
     syncTemplateState(nextTemplate, options);
   };
 
   useEffect(() => {
-    reloadTemplate();
+    void reloadTemplate();
   }, [id]);
 
   const selectedCategory = useMemo(() => {
@@ -434,8 +434,8 @@ const TemplateDetail: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const deleted = deleteClassificationTemplate(template.id);
+      onOk: async () => {
+        const deleted = await deleteClassificationTemplate(template.id);
         if (!deleted) {
           messageApi.error('删除模板失败，请刷新后重试');
           return;

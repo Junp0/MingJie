@@ -26,14 +26,19 @@ const ClassificationTasks: React.FC = () => {
   const [form] = Form.useForm<ClassificationTaskFormValues>();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const templateOptions = useMemo(
-    () =>
-      listClassificationTemplates().map((template) => ({
+  const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
+
+  React.useEffect(() => {
+    const loadTemplateOptions = async () => {
+      const templates = await listClassificationTemplates();
+      setTemplateOptions(templates.map((template) => ({
         value: template.id,
         label: template.templateName,
-      })),
-    [],
-  );
+      })));
+    };
+
+    loadTemplateOptions();
+  }, []);
 
   const columns: ProColumns<ClassificationTaskRecord>[] = [
     {
@@ -192,7 +197,7 @@ const ClassificationTasks: React.FC = () => {
     const values = await form.validateFields();
     const selectedTemplate = templateOptions.find((item) => item.value === values.templateId);
 
-    createClassificationTask(
+    await createClassificationTask(
       {
         ...values,
         templateName: selectedTemplate?.label,
@@ -241,7 +246,7 @@ const ClassificationTasks: React.FC = () => {
         ]}
         request={async (params) => {
           const { taskName, status, sourceLabel } = params;
-          let data = listClassificationTasks();
+          let data = await listClassificationTasks();
 
           if (taskName) {
             data = data.filter((item) => item.taskName.includes(String(taskName)));
