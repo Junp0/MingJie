@@ -3,6 +3,7 @@ import {
   DatabaseOutlined,
   ExperimentOutlined,
   ProfileOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { useLocation, useNavigate } from '@umijs/max';
@@ -28,8 +29,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import {
   createImportTask,
+  discoverImportDatabases,
   linkClassificationTaskToImport,
   type DataAssetImportFormValues,
+  type DiscoverImportDatabasesValues,
   type ImportScheduleMode,
   type ImportSourceType,
 } from '@/services/data-assets/importTaskStore';
@@ -44,7 +47,8 @@ import { listAssetGroupSelectOptions } from '@/services/data-assets/assetGroupSt
 const { TextArea } = Input;
 const { Text } = Typography;
 
-interface ImportWorkflowFormValues extends Omit<DataAssetImportFormValues, 'executeAt' | 'description'> {
+interface ImportWorkflowFormValues
+  extends Omit<DataAssetImportFormValues, 'executeAt' | 'description'> {
   executeAt?: dayjs.Dayjs;
   description?: string;
   createClassificationTask: boolean;
@@ -61,7 +65,10 @@ const SOURCE_TYPE_OPTIONS: Array<{ value: ImportSourceType; label: string }> = [
   { value: 'message_queue', label: '消息队列' },
 ];
 
-const CONNECTOR_TYPE_OPTIONS: Record<ImportSourceType, Array<{ value: string; label: string; port?: number }>> = {
+const CONNECTOR_TYPE_OPTIONS: Record<
+  ImportSourceType,
+  Array<{ value: string; label: string; port?: number }>
+> = {
   database: [
     { value: 'MySQL', label: 'MySQL', port: 3306 },
     { value: 'PostgreSQL', label: 'PostgreSQL', port: 5432 },
@@ -102,7 +109,9 @@ const PRIORITY_OPTIONS: Array<{
   { value: 'low', label: '低优先级' },
 ];
 
-const mapImportSourceTypeToTaskDataType = (sourceType: ImportSourceType): ClassificationTaskDataType => {
+const mapImportSourceTypeToTaskDataType = (
+  sourceType: ImportSourceType,
+): ClassificationTaskDataType => {
   switch (sourceType) {
     case 'database':
       return 'database';
@@ -120,26 +129,28 @@ const DataImportForm: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [discoveringDatabases, setDiscoveringDatabases] = useState(false);
+  const [databaseOptions, setDatabaseOptions] = useState<string[]>([]);
+  const [templateOptions, setTemplateOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [assetGroupOptions, setAssetGroupOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
 
   const sourceType = Form.useWatch('sourceType', form) ?? 'database';
   const sourceName = Form.useWatch('sourceName', form);
-  const createClassificationTaskSwitch = Form.useWatch('createClassificationTask', form);
+  const createClassificationTaskSwitch = Form.useWatch(
+    'createClassificationTask',
+    form,
+  );
   const scheduleMode = Form.useWatch('scheduleMode', form);
 
-  const templateOptions = useMemo(
-    () =>
-      listClassificationTemplates().map((template) => ({
-        value: template.id,
-        label: template.templateName,
-      })),
-    [],
-  );
   const defaultTemplateOption = useMemo(
-    () => templateOptions.find((item) => item.label === '标准分类分级模板') ?? templateOptions[0],
+    () => templateOptions[0],
     [templateOptions],
   );
 
-  const assetGroupOptions = useMemo(() => listAssetGroupSelectOptions(), []);
   const discoveryPreset = useMemo(() => {
     const params = new URLSearchParams(location.search);
     const portValue = params.get('port');
@@ -154,14 +165,16 @@ const DataImportForm: React.FC = () => {
       from: params.get('from') ?? undefined,
     };
   }, [location.search]);
-  const backPath = discoveryPreset.from === 'asset-discovery'
-    ? '/data-assets/auto-scan'
-    : discoveryPreset.from === 'asset-list'
-      ? '/data-assets/data-asset-list'
-      : '/data-assets/data-import';
+
+  const backPath =
+    discoveryPreset.from === 'asset-discovery'
+      ? '/data-assets/auto-scan'
+      : discoveryPreset.from === 'asset-list'
+        ? '/data-assets/data-asset-list'
+        : '/data-assets/data-import';
+
   const connectorOptions = useMemo(() => {
     const baseOptions = CONNECTOR_TYPE_OPTIONS[sourceType];
-
     if (
       sourceType === 'database' &&
       discoveryPreset.databaseType &&
@@ -176,20 +189,39 @@ const DataImportForm: React.FC = () => {
         },
       ];
     }
-
     return baseOptions;
   }, [discoveryPreset.databaseType, discoveryPreset.port, sourceType]);
 
   useEffect(() => {
-    if (createClassificationTaskSwitch && sourceName) {
-      const currentTaskName = form.getFieldValue('classificationTaskName');
-      if (!currentTaskName || /_数据分类分级任务$/.test(currentTaskName)) {
-        form.setFieldsValue({
-          classificationTaskName: `${sourceName}_数据分类分级任务`,
-        });
+    let cancelled = false;
+
+    const loadOptions = async () => {
+      try {
+        const [templates, groups] = await Promise.all([
+          listClassificationTemplates(),
+          listAssetGroupSelectOptions(),
+        ]);
+
+        if (cancelled) return;
+
+        setTemplateOptions(
+          templates.map((template) => ({
+            value: template.id,
+            label: template.templateName,
+          })),
+        );
+        setAssetGroupOptions(groups);
+      } catch (error) {
+        console.error('Failed to load import form options', error);
       }
-    }
-  }, [createClassificationTaskSwitch, form, sourceName]);
+    };
+
+    void loadOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (defaultTemplateOption && !form.getFieldValue('classificationTemplateId')) {
@@ -198,6 +230,20 @@ const DataImportForm: React.FC = () => {
       });
     }
   }, [defaultTemplateOption, form]);
+
+  useEffect(() => {
+    if (createClassificationTaskSwitch && sourceName) {
+      const currentTaskName = form.getFieldValue('classificationTaskName');
+      if (
+        !currentTaskName ||
+        /_数据分类分级任务$/.test(currentTaskName)
+      ) {
+        form.setFieldsValue({
+          classificationTaskName: `${sourceName}_数据分类分级任务`,
+        });
+      }
+    }
+  }, [createClassificationTaskSwitch, form, sourceName]);
 
   useEffect(() => {
     if (
@@ -211,25 +257,80 @@ const DataImportForm: React.FC = () => {
 
     form.setFieldsValue({
       sourceType: discoveryPreset.sourceType ?? 'database',
-      databaseType: discoveryPreset.databaseType ?? form.getFieldValue('databaseType') ?? 'MySQL',
+      databaseType:
+        discoveryPreset.databaseType ??
+        form.getFieldValue('databaseType') ??
+        'MySQL',
       ipAddress: discoveryPreset.ipAddress ?? form.getFieldValue('ipAddress'),
       port: discoveryPreset.port ?? form.getFieldValue('port') ?? 3306,
-      assetGroupId: discoveryPreset.assetGroupId ?? form.getFieldValue('assetGroupId'),
+      assetGroupId:
+        discoveryPreset.assetGroupId ?? form.getFieldValue('assetGroupId'),
     });
   }, [discoveryPreset, form]);
 
   const handleSourceTypeChange = (value: ImportSourceType) => {
     const firstConnector = CONNECTOR_TYPE_OPTIONS[value][0];
+    setDatabaseOptions([]);
     form.setFieldsValue({
       databaseType: firstConnector?.value,
       port: firstConnector?.port ?? 0,
+      databaseName: undefined,
     });
   };
 
   const handleConnectorChange = (value: string) => {
     const matched = connectorOptions.find((item) => item.value === value);
-    if (typeof matched?.port === 'number') {
-      form.setFieldsValue({ port: matched.port });
+    setDatabaseOptions([]);
+    form.setFieldsValue({
+      port: typeof matched?.port === 'number' ? matched.port : form.getFieldValue('port'),
+      databaseName: undefined,
+    });
+  };
+
+  const handleDiscoverDatabases = async () => {
+    const values = await form.validateFields([
+      'sourceType',
+      'databaseType',
+      'ipAddress',
+      'port',
+      'username',
+      'password',
+    ]);
+
+    if (values.sourceType !== 'database') {
+      messageApi.warning('当前只有数据库类型支持自动发现数据库列表。');
+      return;
+    }
+
+    setDiscoveringDatabases(true);
+    try {
+      const databases = await discoverImportDatabases({
+        databaseType: values.databaseType,
+        ipAddress: values.ipAddress,
+        port: values.port,
+        username: values.username,
+        password: values.password,
+      } satisfies DiscoverImportDatabasesValues);
+
+      setDatabaseOptions(databases);
+
+      if (databases.length === 1) {
+        form.setFieldsValue({ databaseName: databases[0] });
+      } else if (databases.length > 1 && !form.getFieldValue('databaseName')) {
+        form.setFieldsValue({ databaseName: databases[0] });
+      }
+
+      messageApi.success(
+        databases.length
+          ? `连接成功，已发现 ${databases.length} 个可导入数据库`
+          : '连接成功，但未发现可导入数据库',
+      );
+    } catch (error) {
+      console.error(error);
+      setDatabaseOptions([]);
+      messageApi.error('连接失败，无法获取数据库列表');
+    } finally {
+      setDiscoveringDatabases(false);
     }
   };
 
@@ -242,11 +343,11 @@ const DataImportForm: React.FC = () => {
       'port',
       'username',
       'password',
+      'databaseName',
       'assetGroupId',
       'scheduleMode',
       'executeAt',
     ]);
-
   };
 
   const validateStepTwo = async () => {
@@ -264,19 +365,8 @@ const DataImportForm: React.FC = () => {
   const handleNext = async () => {
     try {
       await validateStepOne();
-
-      const currentSourceName = form.getFieldValue('sourceName');
-      const currentTaskName = form.getFieldValue('classificationTaskName');
-      const shouldCreateTask = form.getFieldValue('createClassificationTask');
-
-      if (shouldCreateTask && currentSourceName && (!currentTaskName || /_数据分类分级任务$/.test(currentTaskName))) {
-        form.setFieldsValue({
-          classificationTaskName: `${currentSourceName}_数据分类分级任务`,
-        });
-      }
-
       setCurrentStep(1);
-    } catch (_error) {
+    } catch {
       messageApi.error('请先完善数据资产属性');
     }
   };
@@ -289,18 +379,20 @@ const DataImportForm: React.FC = () => {
 
       setSubmitting(true);
 
-      const importTask = createImportTask(
+      const importTask = await createImportTask(
         {
           sourceName: values.sourceName,
           sourceType: values.sourceType,
           databaseType: values.databaseType,
+          databaseName: values.databaseName,
           ipAddress: values.ipAddress,
           port: values.port,
           username: values.username,
           password: values.password,
           assetGroupId: values.assetGroupId,
           assetGroupName:
-            assetGroupOptions.find((item) => item.value === values.assetGroupId)?.label ?? '未分组',
+            assetGroupOptions.find((item) => item.value === values.assetGroupId)
+              ?.label ?? '未分组',
           scheduleMode: values.scheduleMode,
           executeAt: values.executeAt?.format('YYYY-MM-DD HH:mm:ss'),
           description: values.description ?? '',
@@ -317,9 +409,11 @@ const DataImportForm: React.FC = () => {
           (template) => template.value === values.classificationTemplateId,
         );
 
-        const classificationTask = createClassificationTask(
+        const classificationTask = await createClassificationTask(
           {
-            taskName: values.classificationTaskName ?? `${values.sourceName}_数据分类分级任务`,
+            taskName:
+              values.classificationTaskName ??
+              `${values.sourceName}_数据分类分级任务`,
             dataSource: values.sourceName,
             dataType: mapImportSourceTypeToTaskDataType(values.sourceType),
             classificationType: 'automatic',
@@ -337,7 +431,7 @@ const DataImportForm: React.FC = () => {
         );
 
         createdClassificationTaskId = classificationTask.id;
-        linkClassificationTaskToImport(importTask.id, classificationTask.id);
+        await linkClassificationTaskToImport(importTask.id, classificationTask.id);
       }
 
       messageApi.success(
@@ -346,7 +440,8 @@ const DataImportForm: React.FC = () => {
           : '导入任务已创建',
       );
       navigate(`/data-assets/import-detail/${importTask.id}`);
-    } catch (_error) {
+    } catch (error) {
+      console.error(error);
       if (!submitting) {
         messageApi.error('请先完善表单信息');
       }
@@ -358,7 +453,7 @@ const DataImportForm: React.FC = () => {
   const steps = [
     {
       title: '定义数据资产属性',
-      description: '配置数据源、分组和同步策略',
+      description: '配置数据源、连接信息和导入策略',
       icon: <DatabaseOutlined />,
     },
     {
@@ -393,7 +488,7 @@ const DataImportForm: React.FC = () => {
           }}
         >
           <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
-            <Card title="第一步：定义数据资产属性" styles={{ body: { paddingBlock: 20 } }}>
+            <Card title="第一步：定义数据资产属性">
               {discoveryPreset.from === 'asset-discovery' ? (
                 <Alert
                   type="info"
@@ -403,6 +498,7 @@ const DataImportForm: React.FC = () => {
                   description="IP、端口和数据库类型已自动预填，请继续补充资产名称、访问凭证、资产分组和同步策略。"
                 />
               ) : null}
+
               <Row gutter={20}>
                 <Col xs={24} md={12}>
                   <Form.Item
@@ -410,7 +506,7 @@ const DataImportForm: React.FC = () => {
                     name="sourceName"
                     rules={[{ required: true, message: '请输入数据资产名称' }]}
                   >
-                    <Input placeholder="例如：crm_customer_db" maxLength={50} />
+                    <Input placeholder="例如：import_demo_mysql_3308" maxLength={50} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={12}>
@@ -421,7 +517,9 @@ const DataImportForm: React.FC = () => {
                   >
                     <Select
                       options={SOURCE_TYPE_OPTIONS}
-                      onChange={(value) => handleSourceTypeChange(value as ImportSourceType)}
+                      onChange={(value) =>
+                        handleSourceTypeChange(value as ImportSourceType)
+                      }
                     />
                   </Form.Item>
                 </Col>
@@ -434,7 +532,10 @@ const DataImportForm: React.FC = () => {
                     name="databaseType"
                     rules={[{ required: true, message: '请选择接入类型' }]}
                   >
-                    <Select options={connectorOptions} onChange={handleConnectorChange} />
+                    <Select
+                      options={connectorOptions}
+                      onChange={handleConnectorChange}
+                    />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={12}>
@@ -443,21 +544,13 @@ const DataImportForm: React.FC = () => {
                     name="ipAddress"
                     rules={[{ required: true, message: '请输入接入地址' }]}
                   >
-                    <Input
-                      placeholder={
-                        sourceType === 'file'
-                          ? '例如：/data/import/customer.csv'
-                          : sourceType === 'api'
-                            ? '例如：https://api.example.com/v1/customer'
-                            : '例如：192.168.1.100'
-                      }
-                    />
+                    <Input placeholder="例如：127.0.0.1" />
                   </Form.Item>
                 </Col>
               </Row>
 
               <Row gutter={20}>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     label="端口号"
                     name="port"
@@ -466,16 +559,19 @@ const DataImportForm: React.FC = () => {
                     <InputNumber min={0} max={65535} style={{ width: '100%' }} />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     label="访问账号"
                     name="username"
                     rules={[{ required: true, message: '请输入访问账号' }]}
                   >
-                    <Input placeholder="请输入访问账号" />
+                    <Input placeholder="例如：importer" />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={8}>
+              </Row>
+
+              <Row gutter={20}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     label="访问凭证"
                     name="password"
@@ -484,7 +580,37 @@ const DataImportForm: React.FC = () => {
                     <Input.Password placeholder="请输入访问凭证" />
                   </Form.Item>
                 </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item label="数据库发现">
+                    <Button
+                      icon={<SyncOutlined />}
+                      loading={discoveringDatabases}
+                      onClick={() => {
+                        void handleDiscoverDatabases();
+                      }}
+                    >
+                      测试连接并获取数据库列表
+                    </Button>
+                  </Form.Item>
+                </Col>
               </Row>
+
+              <Form.Item
+                label="数据库名 / Schema"
+                name="databaseName"
+                rules={[{ required: true, message: '请选择数据库名' }]}
+                extra="数据库名称会从真实连接中自动发现；如果已知可直接选择。"
+              >
+                <Select
+                  showSearch
+                  placeholder="请先测试连接并获取数据库列表"
+                  options={databaseOptions.map((item) => ({
+                    value: item,
+                    label: item,
+                  }))}
+                  optionFilterProp="label"
+                />
+              </Form.Item>
 
               <Form.Item
                 label="资产分组"
@@ -511,18 +637,15 @@ const DataImportForm: React.FC = () => {
                 </Col>
                 <Col xs={24} md={16}>
                   <Form.Item
-                    label={scheduleMode === 'single' ? '执行时间' : '首次执行时间'}
+                    label={
+                      scheduleMode === 'single' ? '执行时间' : '首次执行时间'
+                    }
                     name="executeAt"
                     rules={[{ required: true, message: '请选择执行时间' }]}
                   >
                     <DatePicker
                       showTime
                       format="YYYY-MM-DD HH:mm"
-                      placeholder={
-                        scheduleMode === 'single'
-                          ? '请选择单次同步执行时间'
-                          : '请选择首次执行时间'
-                      }
                       style={{ width: '100%' }}
                     />
                   </Form.Item>
@@ -552,13 +675,16 @@ const DataImportForm: React.FC = () => {
                         <Tag color="processing">独立任务来源：导入流程</Tag>
                       </Space>
                       <Text type="secondary">
-                        这里创建的分类分级任务会进入“数据分类分级 / 分类分级任务”列表，并以“导入流程”作为来源标识；
-                        在分类分级任务页手动创建的任务仍会保留为“任务中心”来源，两个入口互不冲突。
+                        这里创建的分类分级任务会进入“数据分类分级 / 分类分级任务”列表，并以“导入流程”作为来源标识。
                       </Text>
                     </Space>
                   </Col>
                   <Col span={6} style={{ textAlign: 'right' }}>
-                    <Form.Item name="createClassificationTask" valuePropName="checked" noStyle>
+                    <Form.Item
+                      name="createClassificationTask"
+                      valuePropName="checked"
+                      noStyle
+                    >
                       <Switch checkedChildren="开启" unCheckedChildren="关闭" />
                     </Form.Item>
                   </Col>
@@ -567,7 +693,11 @@ const DataImportForm: React.FC = () => {
 
               <Card
                 title="导入资产摘要"
-                extra={<Tag icon={<CheckCircleOutlined />} color="blue">将始终创建导入任务</Tag>}
+                extra={
+                  <Tag icon={<CheckCircleOutlined />} color="blue">
+                    将始终创建导入任务
+                  </Tag>
+                }
               >
                 <Row gutter={[16, 12]}>
                   <Col xs={24} md={8}>
@@ -575,8 +705,8 @@ const DataImportForm: React.FC = () => {
                     <Text strong>{sourceName || '-'}</Text>
                   </Col>
                   <Col xs={24} md={8}>
-                    <Text type="secondary">数据源类型：</Text>
-                    <Text>{SOURCE_TYPE_OPTIONS.find((item) => item.value === sourceType)?.label ?? '-'}</Text>
+                    <Text type="secondary">数据库名：</Text>
+                    <Text>{form.getFieldValue('databaseName') || '-'}</Text>
                   </Col>
                   <Col xs={24} md={8}>
                     <Text type="secondary">接入类型：</Text>
@@ -584,13 +714,21 @@ const DataImportForm: React.FC = () => {
                   </Col>
                   <Col span={24}>
                     <Text type="secondary">资产分组：</Text>
-                    <Text>{assetGroupOptions.find((item) => item.value === form.getFieldValue('assetGroupId'))?.label || '-'}</Text>
+                    <Text>
+                      {assetGroupOptions.find(
+                        (item) => item.value === form.getFieldValue('assetGroupId'),
+                      )?.label || '-'}
+                    </Text>
                   </Col>
                   <Col span={24}>
-                    <Text type="secondary">{scheduleMode === 'single' ? '执行时间：' : '首次执行时间：'}</Text>
+                    <Text type="secondary">
+                      {scheduleMode === 'single' ? '执行时间：' : '首次执行时间：'}
+                    </Text>
                     <Text>
                       {form.getFieldValue('executeAt')
-                        ? dayjs(form.getFieldValue('executeAt')).format('YYYY-MM-DD HH:mm')
+                        ? dayjs(form.getFieldValue('executeAt')).format(
+                            'YYYY-MM-DD HH:mm',
+                          )
                         : '-'}
                     </Text>
                   </Col>
@@ -606,7 +744,10 @@ const DataImportForm: React.FC = () => {
                         name="classificationTaskName"
                         rules={[{ required: true, message: '请输入分类分级任务名称' }]}
                       >
-                        <Input placeholder="请输入分类分级任务名称" maxLength={60} />
+                        <Input
+                          placeholder="请输入分类分级任务名称"
+                          maxLength={60}
+                        />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={12}>
@@ -615,7 +756,7 @@ const DataImportForm: React.FC = () => {
                         name="classificationTemplateId"
                         rules={[{ required: true, message: '请选择分类分级模板' }]}
                       >
-                        <Select placeholder="请选择分类分级模板" options={templateOptions} />
+                        <Select options={templateOptions} />
                       </Form.Item>
                     </Col>
                   </Row>
@@ -633,7 +774,12 @@ const DataImportForm: React.FC = () => {
                   </Row>
 
                   <Form.Item label="任务描述" name="classificationDescription">
-                    <TextArea rows={4} placeholder="请输入分类分级任务描述" maxLength={300} showCount />
+                    <TextArea
+                      rows={4}
+                      placeholder="请输入分类分级任务描述"
+                      maxLength={300}
+                      showCount
+                    />
                   </Form.Item>
                 </Card>
               ) : (
@@ -641,7 +787,7 @@ const DataImportForm: React.FC = () => {
                   type="info"
                   showIcon
                   message="已关闭同步创建分类分级任务"
-                  description="本次仅创建数据资产导入任务，后续如需分类分级任务，仍可在“数据分类分级 / 分类分级任务”页面单独创建。"
+                  description="本次仅创建数据资产导入任务，后续仍可在分类分级任务页单独创建分类任务。"
                 />
               )}
             </Space>
@@ -650,13 +796,19 @@ const DataImportForm: React.FC = () => {
 
         <div style={{ textAlign: 'center', marginTop: 24 }}>
           <Space size="large">
-            {currentStep > 0 ? <Button onClick={() => setCurrentStep(0)}>上一步</Button> : null}
+            {currentStep > 0 ? (
+              <Button onClick={() => setCurrentStep(0)}>上一步</Button>
+            ) : null}
             {currentStep === 0 ? (
-              <Button type="primary" onClick={handleNext}>
+              <Button type="primary" onClick={() => void handleNext()}>
                 下一步
               </Button>
             ) : (
-              <Button type="primary" loading={submitting} onClick={handleSubmit}>
+              <Button
+                type="primary"
+                loading={submitting}
+                onClick={() => void handleSubmit()}
+              >
                 提交并创建任务
               </Button>
             )}

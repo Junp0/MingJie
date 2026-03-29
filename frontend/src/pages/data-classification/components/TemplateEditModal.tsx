@@ -32,19 +32,33 @@ const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
       return;
     }
 
-    const template = getClassificationTemplateById(templateId);
-    if (!template) {
-      setTemplateExists(false);
-      form.resetFields();
-      return;
-    }
+    let cancelled = false;
 
-    setTemplateExists(true);
-    form.setFieldsValue({
-      templateName: template.templateName,
-      status: template.status,
-      description: template.description,
-    });
+    const loadTemplate = async () => {
+      const template = await getClassificationTemplateById(templateId);
+      if (cancelled) {
+        return;
+      }
+
+      if (!template) {
+        setTemplateExists(false);
+        form.resetFields();
+        return;
+      }
+
+      setTemplateExists(true);
+      form.setFieldsValue({
+        templateName: template.templateName,
+        status: template.status,
+        description: template.description,
+      });
+    };
+
+    void loadTemplate();
+
+    return () => {
+      cancelled = true;
+    };
   }, [form, open, templateId]);
 
   const handleOk = async () => {
@@ -56,7 +70,7 @@ const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
     setSubmitting(true);
 
     try {
-      const updated = updateClassificationTemplate(templateId, values);
+      const updated = await updateClassificationTemplate(templateId, values);
       if (!updated) {
         setTemplateExists(false);
         messageApi.error('未找到要编辑的模板');

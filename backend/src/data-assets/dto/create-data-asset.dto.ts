@@ -13,6 +13,11 @@ export class CreateDataAssetDto {
   @IsString()
   sourceType!: string;
 
+  @ApiPropertyOptional({ example: 'user_center' })
+  @IsOptional()
+  @IsString()
+  sourceDatabaseName?: string;
+
   @ApiProperty({ example: '10.0.0.12' })
   @IsString()
   ipAddress!: string;
@@ -48,6 +53,34 @@ export class CreateDataAssetDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({ example: 12 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  tableCount?: number;
+
+  @ApiPropertyOptional({ example: 96 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  fieldCount?: number;
+
+  @ApiPropertyOptional({ example: 52428800 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  sizeBytes?: number;
+
+  @ApiPropertyOptional({ example: 250000 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  recordCount?: number;
 
   @ApiProperty()
   @IsString()

@@ -1,10 +1,18 @@
 import { ArrowLeftOutlined, LinkOutlined } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { useNavigate, useParams } from '@umijs/max';
-import { Button, Card, Descriptions, Empty, Progress, Space, Table, Tag, Typography, message } from 'antd';
-import React, { useMemo, useState } from 'react';
-import { getImportTaskById, updateImportTaskStatus } from '@/services/data-assets/importTaskStore';
-import { getClassificationTaskById } from '@/services/data-classification/classificationTaskStore';
+import { Button, Card, Descriptions, Empty, Modal, Progress, Space, Table, Tag, Typography, message } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  deleteImportTask,
+  getImportTaskById,
+  updateImportTaskStatus,
+  type DataAssetImportRecord,
+} from '@/services/data-assets/importTaskStore';
+import {
+  getClassificationTaskById,
+  type ClassificationTaskRecord,
+} from '@/services/data-classification/classificationTaskStore';
 
 const { Paragraph, Text } = Typography;
 
@@ -13,12 +21,46 @@ const ImportDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [messageApi, contextHolder] = message.useMessage();
   const [refreshSeed, setRefreshSeed] = useState(0);
+  const [importTask, setImportTask] = useState<DataAssetImportRecord | null>(null);
+  const [linkedClassificationTask, setLinkedClassificationTask] =
+    useState<ClassificationTaskRecord | null>(null);
 
-  const importTask = useMemo(() => (id ? getImportTaskById(id) : null), [id, refreshSeed]);
-  const linkedClassificationTask = useMemo(
-    () => (importTask?.classificationTaskId ? getClassificationTaskById(importTask.classificationTaskId) : null),
-    [importTask?.classificationTaskId, refreshSeed],
-  );
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTaskDetail = async () => {
+      if (!id) {
+        setImportTask(null);
+        setLinkedClassificationTask(null);
+        return;
+      }
+
+      const nextImportTask = await getImportTaskById(id);
+      if (cancelled) {
+        return;
+      }
+
+      setImportTask(nextImportTask);
+
+      if (!nextImportTask?.classificationTaskId) {
+        setLinkedClassificationTask(null);
+        return;
+      }
+
+      const nextClassificationTask = await getClassificationTaskById(
+        nextImportTask.classificationTaskId,
+      );
+      if (!cancelled) {
+        setLinkedClassificationTask(nextClassificationTask);
+      }
+    };
+
+    void loadTaskDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, refreshSeed]);
 
   const importTaskData = useMemo(() => {
     if (!importTask) {
@@ -29,12 +71,12 @@ const ImportDetail: React.FC = () => {
       {
         id: `${importTask.id}-1`,
         sequence: 1,
-        databaseName: importTask.sourceName,
+        databaseName: importTask.databaseName,
         importProgress: importTask.progress,
         importStatus: importTask.status,
         importCompleteTime: importTask.status === 'completed' ? importTask.endTime || importTask.updateTime : '-',
-        totalTables: Math.max(1, Math.round(importTask.progress / 10) + 8),
-        importedRecords: Math.round((importTask.progress / 100) * 50000),
+        totalTables: importTask.importedTableCount,
+        importedRecords: importTask.importedRecordCount,
       },
     ];
   }, [importTask]);
@@ -125,8 +167,8 @@ const ImportDetail: React.FC = () => {
           <Button
             key="start"
             type="primary"
-            onClick={() => {
-              updateImportTaskStatus(importTask.id, 'running');
+            onClick={async () => {
+              await updateImportTaskStatus(importTask.id, 'running');
               setRefreshSeed((current) => current + 1);
               messageApi.success('导入任务已启动');
             }}
@@ -138,8 +180,8 @@ const ImportDetail: React.FC = () => {
           <Button
             key="complete"
             type="primary"
-            onClick={() => {
-              const updated = updateImportTaskStatus(importTask.id, 'completed');
+            onClick={async () => {
+              const updated = await updateImportTaskStatus(importTask.id, 'completed');
               setRefreshSeed((current) => current + 1);
               if (updated?.classificationTaskId) {
                 messageApi.success('导入已完成，并已自动启动关联分类分级任务');
@@ -154,8 +196,8 @@ const ImportDetail: React.FC = () => {
         importTask.status === 'running' ? (
           <Button
             key="stop"
-            onClick={() => {
-              updateImportTaskStatus(importTask.id, 'stopped');
+            onClick={async () => {
+              await updateImportTaskStatus(importTask.id, 'stopped');
               setRefreshSeed((current) => current + 1);
               messageApi.success('导入任务已停止');
             }}
@@ -163,6 +205,27 @@ const ImportDetail: React.FC = () => {
             停止导入
           </Button>
         ) : null,
+        <Button
+          key="delete"
+          danger
+          onClick={() => {
+            Modal.confirm({
+              title: '确认删除导入任务',
+              content:
+                '删除导入任务会自动删除对应数据资产和分类分级结果，确认后按照提示内容执行删除动作，且不可恢复。',
+              okText: '确认删除',
+              cancelText: '取消',
+              okButtonProps: { danger: true },
+              onOk: async () => {
+                await deleteImportTask(importTask.id);
+                messageApi.success('导入任务已删除，关联数据已按提示执行清理');
+                navigate('/data-assets/data-import');
+              },
+            });
+          }}
+        >
+          删除导入任务
+        </Button>,
       ].filter(Boolean)}
     >
       {contextHolder}

@@ -9,6 +9,7 @@ export interface DataAssetImportRecord {
   sourceType: ImportSourceType;
   sourceName: string;
   databaseType: string;
+  databaseName: string;
   sourceConfig: string;
   ipAddress: string;
   port: number;
@@ -29,6 +30,10 @@ export interface DataAssetImportRecord {
   description: string;
   classificationTaskEnabled: boolean;
   classificationTaskId?: string;
+  importedTableCount: number;
+  importedFieldCount: number;
+  importedRecordCount: number;
+  errorMessage?: string;
   creator: string;
 }
 
@@ -36,6 +41,7 @@ export interface DataAssetImportFormValues {
   sourceName: string;
   sourceType: ImportSourceType;
   databaseType: string;
+  databaseName: string;
   ipAddress: string;
   port: number;
   username: string;
@@ -47,6 +53,14 @@ export interface DataAssetImportFormValues {
   description?: string;
 }
 
+export interface DiscoverImportDatabasesValues {
+  databaseType: string;
+  ipAddress: string;
+  port: number;
+  username: string;
+  password: string;
+}
+
 type BackendImportTask = {
   id: string;
   sourceName: string;
@@ -54,8 +68,13 @@ type BackendImportTask = {
   ipAddress: string;
   port: number;
   databaseName?: string | null;
+  sourceUsername?: string | null;
   status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
   progress: number;
+  importedTableCount?: number;
+  importedFieldCount?: number;
+  importedRecordCount?: number;
+  errorMessage?: string | null;
   description?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -66,7 +85,8 @@ type BackendImportTask = {
   classificationTask?: { id: string } | null;
 };
 
-const formatDateTime = (value?: string) => (value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '');
+const formatDateTime = (value?: string) =>
+  value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '';
 
 const statusMap: Record<BackendImportTask['status'], ImportTaskStatus> = {
   PENDING: 'pending',
@@ -75,14 +95,20 @@ const statusMap: Record<BackendImportTask['status'], ImportTaskStatus> = {
   FAILED: 'failed',
 };
 
-const reverseStatusMap: Record<Exclude<ImportTaskStatus, 'stopped'>, BackendImportTask['status']> = {
+const reverseStatusMap: Record<
+  Exclude<ImportTaskStatus, 'stopped'>,
+  BackendImportTask['status']
+> = {
   pending: 'PENDING',
   running: 'RUNNING',
   completed: 'SUCCESS',
   failed: 'FAILED',
 };
 
-const buildScheduleLabel = (scheduleMode: ImportScheduleMode, executeAt?: string) => {
+const buildScheduleLabel = (
+  scheduleMode: ImportScheduleMode,
+  executeAt?: string,
+) => {
   switch (scheduleMode) {
     case 'single':
       return executeAt ? `单次同步 ${executeAt}` : '单次同步';
@@ -102,10 +128,11 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => ({
   sourceType: 'database',
   sourceName: item.sourceName,
   databaseType: item.sourceType?.toUpperCase?.() || 'DATABASE',
+  databaseName: item.databaseName ?? item.sourceName,
   sourceConfig: `${item.sourceType}://${item.ipAddress}:${item.port}`,
   ipAddress: item.ipAddress,
   port: item.port,
-  username: item.creator?.name ?? 'app',
+  username: item.sourceUsername ?? item.creator?.name ?? 'app',
   password: '******',
   status: statusMap[item.status],
   progress: item.progress,
@@ -113,24 +140,39 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => ({
   assetGroupName: item.assetGroup?.name ?? '',
   createTime: formatDateTime(item.createdAt),
   updateTime: formatDateTime(item.updatedAt),
-  startTime: item.status === 'RUNNING' || item.status === 'SUCCESS' ? formatDateTime(item.createdAt) : '',
-  endTime: item.status === 'SUCCESS' || item.status === 'FAILED' ? formatDateTime(item.updatedAt) : '',
-  lastSyncTime: item.status === 'SUCCESS' ? formatDateTime(item.updatedAt) : '',
+  startTime:
+    item.status === 'RUNNING' || item.status === 'SUCCESS'
+      ? formatDateTime(item.createdAt)
+      : '',
+  endTime:
+    item.status === 'SUCCESS' || item.status === 'FAILED'
+      ? formatDateTime(item.updatedAt)
+      : '',
+  lastSyncTime:
+    item.status === 'SUCCESS' ? formatDateTime(item.updatedAt) : '',
   scheduleMode: 'single',
   scheduleLabel: buildScheduleLabel('single', formatDateTime(item.createdAt)),
   executeAt: formatDateTime(item.createdAt),
   description: item.description ?? '',
   classificationTaskEnabled: Boolean(item.classificationTask?.id),
   classificationTaskId: item.classificationTask?.id ?? undefined,
+  importedTableCount: item.importedTableCount ?? 0,
+  importedFieldCount: item.importedFieldCount ?? 0,
+  importedRecordCount: item.importedRecordCount ?? 0,
+  errorMessage: item.errorMessage ?? undefined,
   creator: item.creator?.name ?? '当前用户',
 });
 
 export const listImportTasks = async (): Promise<DataAssetImportRecord[]> => {
   const data = await request<BackendImportTask[]>('/api/import-tasks');
-  return data.map(mapImportTask).sort((left, right) => right.createTime.localeCompare(left.createTime));
+  return data
+    .map(mapImportTask)
+    .sort((left, right) => right.createTime.localeCompare(left.createTime));
 };
 
-export const getImportTaskById = async (taskId: string): Promise<DataAssetImportRecord | null> => {
+export const getImportTaskById = async (
+  taskId: string,
+): Promise<DataAssetImportRecord | null> => {
   const tasks = await listImportTasks();
   return tasks.find((item) => item.id === taskId) ?? null;
 };
@@ -146,14 +188,43 @@ export const createImportTask = async (
       sourceType: values.databaseType.toLowerCase(),
       ipAddress: values.ipAddress.trim(),
       port: values.port,
-      databaseName: values.sourceName.trim(),
+      databaseName: values.databaseName.trim(),
+      sourceUsername: values.username.trim(),
+      sourcePassword: values.password,
       assetGroupId: values.assetGroupId,
       description: values.description?.trim() ?? '',
       progress: 0,
       status: 'PENDING',
     },
   });
-  return mapImportTask({ ...data, classificationTask: options?.classificationTaskId ? { id: options.classificationTaskId } : data.classificationTask });
+
+  return mapImportTask({
+    ...data,
+    classificationTask: options?.classificationTaskId
+      ? { id: options.classificationTaskId }
+      : data.classificationTask,
+  });
+};
+
+export const discoverImportDatabases = async (
+  values: DiscoverImportDatabasesValues,
+): Promise<string[]> => {
+  const data = await request<{ success: boolean; databases: string[] }>(
+    '/api/import-tasks/discover-databases',
+    {
+      method: 'POST',
+      data: {
+        sourceType: values.databaseType.toLowerCase(),
+        databaseType: values.databaseType,
+        ipAddress: values.ipAddress.trim(),
+        port: values.port,
+        sourceUsername: values.username.trim(),
+        sourcePassword: values.password,
+      },
+    },
+  );
+
+  return data.databases ?? [];
 };
 
 export const updateImportTaskStatus = async (
@@ -182,4 +253,11 @@ export const linkClassificationTaskToImport = async (
     classificationTaskEnabled: true,
     classificationTaskId,
   };
+};
+
+export const deleteImportTask = async (taskId: string): Promise<boolean> => {
+  await request(`/api/import-tasks/${taskId}`, {
+    method: 'DELETE',
+  });
+  return true;
 };

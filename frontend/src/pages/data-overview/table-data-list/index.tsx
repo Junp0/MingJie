@@ -4,10 +4,9 @@ import { useLocation } from '@umijs/max';
 import { Button, Card, Empty, List, Space, Tag, Tree, Typography, message } from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  listDataAssets,
-  type DataAssetLevel,
-  type DataAssetRecord,
-} from '@/services/data-assets/dataAssetStore';
+  listDatabaseInstances,
+  type OverviewDataLevel as DataAssetLevel,
+} from '@/services/data-overview/overviewStore';
 
 const { Text } = Typography;
 
@@ -76,109 +75,6 @@ const FIELD_TEMPLATES = [
   { fieldName: 'remark', fieldComment: '备注', dataType: 'VARCHAR(255)', dataCategory: '商品信息' },
 ];
 
-const normalizeAssetName = (value: string) => value.replace(/_db$/i, '');
-
-const mapAssetStatusToDatabaseStatus = (
-  status: DataAssetRecord['status'],
-): DatabaseInstance['status'] => (status === 'active' ? 'online' : 'offline');
-
-const mapAssetStatusToTableStatus = (
-  status: DataAssetRecord['status'],
-): TableItem['status'] => {
-  if (status === 'archived') {
-    return 'maintenance';
-  }
-
-  return status === 'active' ? 'online' : 'offline';
-};
-
-const buildFieldMocks = (
-  asset: DataAssetRecord,
-  tableName: string,
-  tableIndex: number,
-): FieldItem[] => {
-  const fieldCount = Math.max(
-    3,
-    Math.min(8, Math.ceil(asset.fieldCount / Math.max(1, Math.min(asset.tableCount || 1, 6)))),
-  );
-
-  return Array.from({ length: fieldCount }, (_, fieldIndex) => {
-    const template = FIELD_TEMPLATES[fieldIndex % FIELD_TEMPLATES.length];
-
-    return {
-      id: `${asset.id}-table-${tableIndex + 1}-field-${fieldIndex + 1}`,
-      fieldName: `${template.fieldName}_${fieldIndex + 1}`,
-      fieldComment: `${tableName}${template.fieldComment}`,
-      dataType: template.dataType,
-      dataCategory: template.dataCategory,
-      dataLevel: asset.dataLevel,
-      isSensitive: ['confidential', 'secret'].includes(asset.dataLevel),
-      isDesensitized: asset.dataLevel !== 'public',
-      isEncrypted: asset.dataLevel === 'secret',
-      groupName: asset.assetGroupName,
-      sampleData: [`${asset.name}_${fieldIndex + 1}_A`, `${asset.name}_${fieldIndex + 1}_B`],
-      updateTime: asset.updateTime,
-    };
-  });
-};
-
-const buildTableMocks = (asset: DataAssetRecord): TableItem[] => {
-  const baseName = normalizeAssetName(asset.name);
-  const tableCount = Math.max(1, Math.min(asset.tableCount || 1, 6));
-  const perTableRowCount = Math.max(1, Math.floor((asset.recordCount || tableCount) / tableCount));
-  const perTableSize = Math.max(1024, Math.floor((asset.size || 1024 * tableCount) / tableCount));
-
-  return Array.from({ length: tableCount }, (_, index) => {
-    const tableName = tableCount === 1 ? `${baseName}_main` : `${baseName}_${index + 1}`;
-
-    return {
-      id: `${asset.id}-table-${index + 1}`,
-      name: tableName,
-      databaseId: asset.id,
-      rowCount: perTableRowCount + index * 100,
-      size: perTableSize,
-      status: mapAssetStatusToTableStatus(asset.status),
-      lastSyncTime: asset.lastSyncTime,
-      syncStatus: asset.syncStatus,
-      fields: buildFieldMocks(asset, tableName, index),
-    };
-  });
-};
-
-const buildDatabaseInstances = (assets: DataAssetRecord[]): DatabaseInstance[] => {
-  const groupedAssets = new Map<string, DataAssetRecord[]>();
-
-  assets.forEach((asset) => {
-    const current = groupedAssets.get(asset.ipAddress) ?? [];
-    current.push(asset);
-    groupedAssets.set(asset.ipAddress, current);
-  });
-
-  return Array.from(groupedAssets.entries())
-    .map(([ip, grouped]) => {
-      const status: DatabaseInstance['status'] = grouped.some(
-        (asset) => asset.status === 'active',
-      )
-        ? 'online'
-        : 'offline';
-
-      return {
-        ip,
-        status,
-        databases: grouped.map((asset) => ({
-          id: asset.id,
-          assetId: asset.id,
-          assetName: asset.name,
-          name: normalizeAssetName(asset.name),
-          type: asset.sourceType,
-          status: mapAssetStatusToDatabaseStatus(asset.status),
-          tables: buildTableMocks(asset),
-        })),
-      };
-    })
-    .sort((left, right) => left.ip.localeCompare(right.ip));
-};
-
 const TableDataList: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const location = useLocation();
@@ -186,8 +82,24 @@ const TableDataList: React.FC = () => {
   const [selectedDatabaseInstance, setSelectedDatabaseInstance] = useState<string | null>(null);
   const [selectedDatabaseId, setSelectedDatabaseId] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<TableListItem | null>(null);
+  const [databaseInstances, setDatabaseInstances] = useState<DatabaseInstance[]>([]);
 
-  const databaseInstances = useMemo(() => buildDatabaseInstances(listDataAssets()), []);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDatabaseInstances = async () => {
+      const assets = await listDatabaseInstances();
+      if (!cancelled) {
+        setDatabaseInstances(assets as DatabaseInstance[]);
+      }
+    };
+
+    void loadDatabaseInstances();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const databaseMap = useMemo(() => {
     const entries: Array<[string, { instanceIp: string; database: DatabaseItem }]> = [];

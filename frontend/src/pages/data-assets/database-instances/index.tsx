@@ -1,9 +1,10 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { useNavigate } from '@umijs/max';
-import { Button, Input, Progress, Tag, message } from 'antd';
+import { Button, Input, Modal, Progress, Tag, message } from 'antd';
 import React, { useRef, useState } from 'react';
 import {
+  deleteImportTask,
   listImportTasks,
   updateImportTaskStatus,
   type DataAssetImportRecord,
@@ -128,8 +129,8 @@ const DataAssetImport: React.FC = () => {
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
-              onClick={() => {
-                updateImportTaskStatus(record.id, 'running');
+              onClick={async () => {
+                await updateImportTaskStatus(record.id, 'running');
                 messageApi.success(`已启动：${record.sourceName}`);
                 actionRef.current?.reload();
               }}
@@ -142,8 +143,8 @@ const DataAssetImport: React.FC = () => {
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
-              onClick={() => {
-                const updated = updateImportTaskStatus(record.id, 'completed');
+              onClick={async () => {
+                const updated = await updateImportTaskStatus(record.id, 'completed');
                 if (updated?.classificationTaskId) {
                   messageApi.success(`导入已完成，并已自动启动关联分类分级任务`);
                 } else {
@@ -160,8 +161,8 @@ const DataAssetImport: React.FC = () => {
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
-              onClick={() => {
-                updateImportTaskStatus(record.id, 'stopped');
+              onClick={async () => {
+                await updateImportTaskStatus(record.id, 'stopped');
                 messageApi.success(`已停止：${record.sourceName}`);
                 actionRef.current?.reload();
               }}
@@ -169,6 +170,29 @@ const DataAssetImport: React.FC = () => {
               停止
             </Button>
           ) : null}
+          <Button
+            danger
+            type="link"
+            size="small"
+            style={{ padding: 0, margin: 0 }}
+            onClick={() => {
+              Modal.confirm({
+                title: '确认删除导入任务',
+                content:
+                  '删除导入任务会自动删除对应数据资产和分类分级结果，确认后按照提示内容执行删除动作，且不可恢复。',
+                okText: '确认删除',
+                cancelText: '取消',
+                okButtonProps: { danger: true },
+                onOk: async () => {
+                  await deleteImportTask(record.id);
+                  messageApi.success(`已删除导入任务：${record.sourceName}`);
+                  actionRef.current?.reload();
+                },
+              });
+            }}
+          >
+            删除
+          </Button>
         </div>
       ),
       align: 'center',
@@ -203,7 +227,7 @@ const DataAssetImport: React.FC = () => {
           </Button>,
         ]}
         request={async () => {
-          let data = listImportTasks();
+          let data = await listImportTasks();
 
           if (globalSearchValue) {
             data = data.filter((item) =>

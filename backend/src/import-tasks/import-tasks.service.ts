@@ -1,12 +1,249 @@
-import { Injectable } from '@nestjs/common';
-import { ImportTaskStatus } from '@prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  CommonStatus,
+  DataLevel,
+  ImportTaskStatus,
+  TemplateStatus,
+} from '@prisma/client';
+import mysql from 'mysql2/promise';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateImportTaskDto } from './dto/create-import-task.dto';
+import { DiscoverImportDatabasesDto } from './dto/discover-import-databases.dto';
 import { UpdateImportTaskDto } from './dto/update-import-task.dto';
+
+type RemoteTable = {
+  TABLE_NAME: string;
+  TABLE_COMMENT: string | null;
+  ENGINE: string | null;
+  TABLE_ROWS: number | null;
+  DATA_LENGTH: number | null;
+  INDEX_LENGTH: number | null;
+};
+
+type RemoteColumn = {
+  TABLE_NAME: string;
+  COLUMN_NAME: string;
+  COLUMN_COMMENT: string | null;
+  DATA_TYPE: string;
+  COLUMN_TYPE: string;
+  IS_NULLABLE: 'YES' | 'NO';
+  COLUMN_KEY: string;
+  ORDINAL_POSITION: number;
+};
 
 @Injectable()
 export class ImportTasksService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private getInclude() {
+    return {
+      assetGroup: true,
+      creator: true,
+      classificationTask: true,
+      dataAsset: true,
+      tables: {
+        include: {
+          columns: true,
+        },
+      },
+    } as const;
+  }
+
+  private toSafeIdentifier(value: string) {
+    return value.replace(/`/g, '``');
+  }
+
+  private async openMySqlConnection(params: {
+    ipAddress: string;
+    port: number;
+    sourceUsername?: string;
+    sourcePassword?: string;
+    databaseName?: string;
+  }) {
+    return mysql.createConnection({
+      host: params.ipAddress,
+      port: params.port,
+      user: params.sourceUsername,
+      password: params.sourcePassword,
+      database: params.databaseName,
+      multipleStatements: false,
+    });
+  }
+
+  private dataLevelWeight(level: DataLevel) {
+    if (level === DataLevel.SECRET) return 4;
+    if (level === DataLevel.CONFIDENTIAL) return 3;
+    if (level === DataLevel.INTERNAL) return 2;
+    return 1;
+  }
+
+  private mapStatus(status: ImportTaskStatus) {
+    return status === ImportTaskStatus.SUCCESS
+      ? 'completed'
+      : status === ImportTaskStatus.RUNNING
+        ? 'running'
+        : status === ImportTaskStatus.FAILED
+          ? 'failed'
+          : 'pending';
+  }
+
+  private mapLevelCodeToDataLevel(code?: string | null, isSensitive?: boolean, needEncrypt?: boolean) {
+    if (code === 'L1') return DataLevel.PUBLIC;
+    if (code === 'L2') return DataLevel.INTERNAL;
+    if (code === 'L3') return DataLevel.CONFIDENTIAL;
+    if (code === 'L4' || code === 'L5') return DataLevel.SECRET;
+    if (needEncrypt) return DataLevel.SECRET;
+    if (isSensitive) return DataLevel.CONFIDENTIAL;
+    return DataLevel.INTERNAL;
+  }
+
+  private async loadTemplateDataTypes() {
+    const template =
+      (await this.prisma.classificationTemplate.findFirst({
+        where: { status: TemplateStatus.ACTIVE },
+        include: {
+          dataTypes: {
+            include: {
+              category: true,
+              levelDefinition: true,
+              rules: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      })) ??
+      (await this.prisma.classificationTemplate.findFirst({
+        include: {
+          dataTypes: {
+            include: {
+              category: true,
+              levelDefinition: true,
+              rules: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }));
+
+    return template?.dataTypes ?? [];
+  }
+
+  private matchRuleValue(
+    value: string,
+    matcher: string,
+    expected: string,
+  ) {
+    const normalizedValue = value.toLowerCase();
+    const normalizedExpected = expected.toLowerCase();
+
+    switch (matcher) {
+      case 'equals':
+        return normalizedValue === normalizedExpected;
+      case 'contains':
+        return normalizedExpected
+          .split(',')
+          .map((item) => item.trim())
+          .some((item) => item && normalizedValue.includes(item));
+      case 'prefix':
+        return normalizedValue.startsWith(normalizedExpected);
+      case 'suffix':
+        return normalizedValue.endsWith(normalizedExpected);
+      case 'regex':
+        try {
+          return new RegExp(expected, 'i').test(value);
+        } catch {
+          return false;
+        }
+      case 'enumContains':
+        return normalizedExpected
+          .split(',')
+          .map((item) => item.trim())
+          .some((item) => item && normalizedValue.includes(item));
+      default:
+        return false;
+    }
+  }
+
+  private async loadSampleData(
+    connection: mysql.Connection,
+    databaseName: string,
+    tableName: string,
+    columnName: string,
+  ) {
+    try {
+      const db = this.toSafeIdentifier(databaseName);
+      const table = this.toSafeIdentifier(tableName);
+      const column = this.toSafeIdentifier(columnName);
+      const [rows] = await connection.query(
+        `SELECT DISTINCT \`${column}\` AS value FROM \`${db}\`.\`${table}\` WHERE \`${column}\` IS NOT NULL LIMIT 3`,
+      );
+
+      return (rows as Array<{ value: unknown }>)
+        .map((row) => row.value)
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) => String(value));
+    } catch {
+      return [];
+    }
+  }
+
+  private classifyColumn(
+    column: RemoteColumn,
+    table: RemoteTable,
+    dataTypes: Awaited<ReturnType<ImportTasksService['loadTemplateDataTypes']>>,
+  ) {
+    const candidates = dataTypes
+      .map((dataType) => {
+        const score = dataType.rules.reduce((total, rule) => {
+          const currentValue =
+            rule.target === 'fieldComment'
+              ? column.COLUMN_COMMENT ?? ''
+              : rule.target === 'fieldType'
+                ? column.COLUMN_TYPE
+                : rule.target === 'tableName'
+                  ? table.TABLE_NAME
+                  : rule.target === 'tableComment'
+                    ? table.TABLE_COMMENT ?? ''
+                    : column.COLUMN_NAME;
+
+          return this.matchRuleValue(currentValue, rule.matcher, rule.value)
+            ? total + Number(rule.hitRate)
+            : total;
+        }, 0);
+
+        return {
+          dataType,
+          score,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score);
+
+    const matched = candidates[0]?.dataType;
+    if (!matched) {
+      return {
+        classificationDataTypeId: null,
+        dataCategory: '未分类',
+        dataLevel: DataLevel.INTERNAL,
+        isSensitive: false,
+        needMask: false,
+        needEncrypt: false,
+      };
+    }
+
+    return {
+      classificationDataTypeId: matched.id,
+      dataCategory: matched.category?.name ?? '未分类',
+      dataLevel: this.mapLevelCodeToDataLevel(
+        matched.levelDefinition?.code,
+        matched.isSensitive,
+        matched.needEncrypt,
+      ),
+      isSensitive: matched.isSensitive,
+      needMask: matched.needMask,
+      needEncrypt: matched.needEncrypt,
+    };
+  }
 
   async seed() {
     const count = await this.prisma.importTask.count();
@@ -23,44 +260,355 @@ export class ImportTasksService {
         ipAddress: '10.10.0.12',
         port: 3306,
         databaseName: 'user_center',
+        sourceUsername: 'app',
         assetGroupId: assetGroup.id,
         creatorId: creator?.id,
         status: ImportTaskStatus.SUCCESS,
         progress: 100,
         description: '系统初始化导入任务',
       },
-      include: { assetGroup: true, creator: true },
+      include: this.getInclude(),
     });
   }
 
   async findAll() {
     await this.seed();
     return this.prisma.importTask.findMany({
-      include: { assetGroup: true, creator: true, classificationTask: true },
+      include: this.getInclude(),
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  create(dto: CreateImportTaskDto) {
-    return this.prisma.importTask.create({
+  async discoverDatabases(dto: DiscoverImportDatabasesDto) {
+    if (dto.sourceType.toLowerCase() !== 'mysql') {
+      throw new BadRequestException('Only MySQL discovery is supported right now.');
+    }
+
+    let connection: mysql.Connection | null = null;
+    try {
+      connection = await this.openMySqlConnection(dto);
+      const [rows] = await connection.query(
+        `
+          SELECT SCHEMA_NAME
+          FROM information_schema.SCHEMATA
+          WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+          ORDER BY SCHEMA_NAME
+        `,
+      );
+
+      const databases = (rows as Array<{ SCHEMA_NAME: string }>)
+        .map((row) => row.SCHEMA_NAME)
+        .filter(Boolean);
+
+      return {
+        success: true,
+        databases,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Failed to connect to the database server.',
+      );
+    } finally {
+      if (connection) {
+        await connection.end();
+      }
+    }
+  }
+
+  private async importMySqlSchema(taskId: string, dto: CreateImportTaskDto) {
+    const connection = await this.openMySqlConnection(dto);
+
+    try {
+      const [tablesRows] = await connection.query(
+        `
+          SELECT
+            TABLE_NAME,
+            TABLE_COMMENT,
+            ENGINE,
+            TABLE_ROWS,
+            DATA_LENGTH,
+            INDEX_LENGTH
+          FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ?
+          ORDER BY TABLE_NAME
+        `,
+        [dto.databaseName],
+      );
+      const tablesResult = tablesRows as RemoteTable[];
+
+      const [columnsRows] = await connection.query(
+        `
+          SELECT
+            TABLE_NAME,
+            COLUMN_NAME,
+            COLUMN_COMMENT,
+            DATA_TYPE,
+            COLUMN_TYPE,
+            IS_NULLABLE,
+            COLUMN_KEY,
+            ORDINAL_POSITION
+          FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ?
+          ORDER BY TABLE_NAME, ORDINAL_POSITION
+        `,
+        [dto.databaseName],
+      );
+      const columnsResult = columnsRows as RemoteColumn[];
+
+      const dataTypes = await this.loadTemplateDataTypes();
+
+      const [assetGroup, creator] = await Promise.all([
+        this.prisma.assetGroup.findUnique({ where: { id: dto.assetGroupId } }),
+        dto.creatorId ? this.prisma.user.findUnique({ where: { id: dto.creatorId } }) : this.prisma.user.findFirst(),
+      ]);
+
+      let asset = await this.prisma.dataAsset.findFirst({
+        where: {
+          ipAddress: dto.ipAddress,
+          port: dto.port,
+          sourceDatabaseName: dto.databaseName,
+        },
+      });
+
+      if (!asset) {
+        asset = await this.prisma.dataAsset.create({
+          data: {
+            name: dto.sourceName,
+            sourceType: dto.sourceType,
+            sourceDatabaseName: dto.databaseName,
+            ipAddress: dto.ipAddress,
+            port: dto.port,
+            status: CommonStatus.ACTIVE,
+            dataLevel: DataLevel.INTERNAL,
+            owner: creator?.name ?? '数据库导入',
+            department: assetGroup?.department ?? '数据治理平台',
+            description: dto.description,
+            tags: ['mysql-import', dto.databaseName ?? 'database'],
+            assetGroupId: dto.assetGroupId,
+          },
+        });
+      } else {
+        asset = await this.prisma.dataAsset.update({
+          where: { id: asset.id },
+          data: {
+            name: dto.sourceName,
+            sourceType: dto.sourceType,
+            sourceDatabaseName: dto.databaseName,
+            description: dto.description,
+            assetGroupId: dto.assetGroupId,
+          },
+        });
+      }
+
+      await this.prisma.dataAssetColumn.deleteMany({
+        where: {
+          table: {
+            assetId: asset.id,
+          },
+        },
+      });
+      await this.prisma.dataAssetTable.deleteMany({
+        where: { assetId: asset.id },
+      });
+
+      const columnsByTable = new Map<string, RemoteColumn[]>();
+      columnsResult.forEach((column) => {
+        const current = columnsByTable.get(column.TABLE_NAME) ?? [];
+        current.push(column);
+        columnsByTable.set(column.TABLE_NAME, current);
+      });
+
+      let fieldCount = 0;
+      let recordCount = 0;
+      let sizeBytes = 0;
+      let highestLevel: DataLevel = DataLevel.PUBLIC;
+
+      for (const table of tablesResult) {
+        const tableColumns = columnsByTable.get(table.TABLE_NAME) ?? [];
+        recordCount += Number(table.TABLE_ROWS ?? 0);
+        sizeBytes += Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0);
+
+        const createdTable = await this.prisma.dataAssetTable.create({
+          data: {
+            assetId: asset.id,
+            importTaskId: taskId,
+            tableName: table.TABLE_NAME,
+            tableComment: table.TABLE_COMMENT ?? '',
+            engine: table.ENGINE ?? undefined,
+            rowCount: Number(table.TABLE_ROWS ?? 0),
+            sizeBytes: Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0),
+          },
+        });
+
+        for (const column of tableColumns) {
+          fieldCount += 1;
+          const classification = this.classifyColumn(column, table, dataTypes);
+          if (this.dataLevelWeight(classification.dataLevel) > this.dataLevelWeight(highestLevel)) {
+            highestLevel = classification.dataLevel;
+          }
+
+          const sampleData = await this.loadSampleData(
+            connection,
+            dto.databaseName ?? '',
+            table.TABLE_NAME,
+            column.COLUMN_NAME,
+          );
+
+          await this.prisma.dataAssetColumn.create({
+            data: {
+              tableId: createdTable.id,
+              columnName: column.COLUMN_NAME,
+              columnComment: column.COLUMN_COMMENT ?? '',
+              dataType: column.DATA_TYPE,
+              columnType: column.COLUMN_TYPE,
+              isNullable: column.IS_NULLABLE === 'YES',
+              isPrimaryKey: column.COLUMN_KEY === 'PRI',
+              ordinalPosition: column.ORDINAL_POSITION,
+              sampleData,
+              classificationDataTypeId: classification.classificationDataTypeId,
+              dataCategory: classification.dataCategory,
+              dataLevel: classification.dataLevel,
+              isSensitive: classification.isSensitive,
+              needMask: classification.needMask,
+              needEncrypt: classification.needEncrypt,
+            },
+          });
+        }
+      }
+
+      const updatedAsset = await this.prisma.dataAsset.update({
+        where: { id: asset.id },
+        data: {
+          tableCount: tablesResult.length,
+          fieldCount,
+          sizeBytes,
+          recordCount,
+          dataLevel: highestLevel,
+          tags: ['mysql-import', dto.databaseName ?? 'database'],
+        },
+      });
+
+      await this.prisma.importTask.update({
+        where: { id: taskId },
+        data: {
+          status: ImportTaskStatus.SUCCESS,
+          progress: 100,
+          dataAssetId: updatedAsset.id,
+          importedTableCount: tablesResult.length,
+          importedFieldCount: fieldCount,
+          importedRecordCount: recordCount,
+          errorMessage: null,
+        },
+      });
+    } finally {
+      await connection.end();
+    }
+  }
+
+  async create(dto: CreateImportTaskDto) {
+    const task = await this.prisma.importTask.create({
       data: {
-        ...dto,
-        status: dto.status ?? ImportTaskStatus.PENDING,
-        progress: dto.progress ?? 0,
+        sourceName: dto.sourceName,
+        sourceType: dto.sourceType,
+        ipAddress: dto.ipAddress,
+        port: dto.port,
+        databaseName: dto.databaseName,
+        sourceUsername: dto.sourceUsername,
+        assetGroupId: dto.assetGroupId,
+        creatorId: dto.creatorId,
+        status: ImportTaskStatus.RUNNING,
+        progress: 10,
+        description: dto.description,
       },
-      include: { assetGroup: true, creator: true, classificationTask: true },
+      include: this.getInclude(),
+    });
+
+    const isMySqlImport =
+      dto.sourceType.toLowerCase() === 'mysql' &&
+      dto.databaseName &&
+      dto.sourceUsername &&
+      dto.sourcePassword;
+
+    if (!isMySqlImport) {
+      return this.prisma.importTask.update({
+        where: { id: task.id },
+        data: {
+          status: dto.status ?? ImportTaskStatus.PENDING,
+          progress: dto.progress ?? 0,
+        },
+        include: this.getInclude(),
+      });
+    }
+
+    try {
+      await this.importMySqlSchema(task.id, dto);
+    } catch (error) {
+      await this.prisma.importTask.update({
+        where: { id: task.id },
+        data: {
+          status: ImportTaskStatus.FAILED,
+          progress: 0,
+          errorMessage: error instanceof Error ? error.message : '数据库连接或结构读取失败',
+        },
+      });
+    }
+
+    return this.prisma.importTask.findUnique({
+      where: { id: task.id },
+      include: this.getInclude(),
     });
   }
 
-  update(id: string, dto: UpdateImportTaskDto) {
+  async update(id: string, dto: UpdateImportTaskDto) {
     return this.prisma.importTask.update({
       where: { id },
       data: dto,
-      include: { assetGroup: true, creator: true, classificationTask: true },
+      include: this.getInclude(),
     });
   }
 
-  remove(id: string) {
-    return this.prisma.importTask.delete({ where: { id } });
+  async remove(id: string) {
+    const task = await this.prisma.importTask.findUnique({
+      where: { id },
+      include: {
+        classificationTask: true,
+      },
+    });
+
+    if (!task) {
+      return { success: false };
+    }
+
+    if (task.classificationTask?.id) {
+      await this.prisma.classificationTask.delete({
+        where: { id: task.classificationTask.id },
+      });
+    }
+
+    const dataAssetId = task.dataAssetId;
+
+    await this.prisma.importTask.delete({
+      where: { id },
+    });
+
+    let deletedDataAsset = false;
+    if (dataAssetId) {
+      const relatedTaskCount = await this.prisma.importTask.count({
+        where: { dataAssetId },
+      });
+
+      if (relatedTaskCount === 0) {
+        await this.prisma.dataAsset.delete({
+          where: { id: dataAssetId },
+        });
+        deletedDataAsset = true;
+      }
+    }
+
+    return {
+      success: true,
+      deletedClassificationTask: Boolean(task.classificationTask?.id),
+      deletedDataAsset,
+    };
   }
 }

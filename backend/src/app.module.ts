@@ -11,6 +11,7 @@ import { ClassificationTemplatesModule } from './classification-templates/classi
 import { ProtectionFeaturesModule } from './protection-features/protection-features.module';
 import { AutoScanModule } from './auto-scan/auto-scan.module';
 import { ClassificationTemplateDetailsModule } from './classification-template-details/classification-template-details.module';
+import { DataOverviewModule } from './data-overview/data-overview.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ClassificationTemplateDetailsModule } from './classification-template-d
     ProtectionFeaturesModule,
     AutoScanModule,
     ClassificationTemplateDetailsModule,
+    DataOverviewModule,
   ],
 })
 export class AppModule {}

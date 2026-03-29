@@ -114,6 +114,7 @@ model DataAsset {
   id               String      @id @default(cuid())
   name             String
   sourceType       String
+  sourceDatabaseName String?
   ipAddress        String
   port             Int
   status           CommonStatus @default(ACTIVE)
@@ -122,6 +123,10 @@ model DataAsset {
   department       String
   tags             Json?
   description      String?
+  tableCount       Int         @default(0)
+  fieldCount       Int         @default(0)
+  sizeBytes        Int         @default(0)
+  recordCount      Int         @default(0)
   assetGroupId     String
   scanResultId     String?     @unique
   createdAt        DateTime    @default(now())
@@ -129,6 +134,8 @@ model DataAsset {
 
   assetGroup       AssetGroup   @relation(fields: [assetGroupId], references: [id])
   scanResult       AutoScanResult? @relation(fields: [scanResultId], references: [id])
+  tables           DataAssetTable[]
+  importTasks      ImportTask[]
 
   @@index([assetGroupId])
 }
@@ -140,20 +147,78 @@ model ImportTask {
   ipAddress             String
   port                  Int
   databaseName          String?
+  sourceUsername        String?
   assetGroupId          String
+  dataAssetId           String?
   creatorId             String?
   status                ImportTaskStatus    @default(PENDING)
   progress              Int                 @default(0)
+  importedTableCount    Int                 @default(0)
+  importedFieldCount    Int                 @default(0)
+  importedRecordCount   Int                 @default(0)
+  errorMessage          String?
   description           String?
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
 
   assetGroup            AssetGroup          @relation(fields: [assetGroupId], references: [id])
+  dataAsset             DataAsset?          @relation(fields: [dataAssetId], references: [id])
   creator               User?               @relation(fields: [creatorId], references: [id])
   classificationTask    ClassificationTask?
+  tables                DataAssetTable[]
 
   @@index([assetGroupId])
+  @@index([dataAssetId])
   @@index([creatorId])
+}
+
+model DataAssetTable {
+  id              String            @id @default(cuid())
+  assetId         String
+  importTaskId    String?
+  tableName       String
+  tableComment    String?
+  engine          String?
+  rowCount        Int               @default(0)
+  sizeBytes       Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  asset           DataAsset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  importTask      ImportTask?       @relation(fields: [importTaskId], references: [id], onDelete: SetNull)
+  columns         DataAssetColumn[]
+
+  @@unique([assetId, tableName])
+  @@index([assetId])
+  @@index([importTaskId])
+}
+
+model DataAssetColumn {
+  id                     String                  @id @default(cuid())
+  tableId                String
+  columnName             String
+  columnComment          String?
+  dataType               String
+  columnType             String
+  isNullable             Boolean                 @default(true)
+  isPrimaryKey           Boolean                 @default(false)
+  ordinalPosition        Int
+  sampleData             Json?
+  classificationDataTypeId String?
+  dataCategory           String?
+  dataLevel              DataLevel?
+  isSensitive            Boolean                 @default(false)
+  needMask               Boolean                 @default(false)
+  needEncrypt            Boolean                 @default(false)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  table                  DataAssetTable          @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  classificationDataType ClassificationDataType? @relation(fields: [classificationDataTypeId], references: [id], onDelete: SetNull)
+
+  @@unique([tableId, columnName])
+  @@index([tableId])
+  @@index([classificationDataTypeId])
 }
 
 model AutoScanRule {
@@ -186,6 +251,8 @@ model AutoScanResult {
   department      String?
   status          ScanTaskStatus @default(COMPLETED)
   claimed         Boolean        @default(false)
+  ignoreReason    String?
+  ignoredAt       DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -268,6 +335,7 @@ model ClassificationDataType {
   category           ClassificationCategory          @relation(fields: [categoryId], references: [id])
   levelDefinition    ClassificationLevelDefinition?  @relation(fields: [levelDefinitionId], references: [id])
   rules              ClassificationRule[]
+  importedColumns    DataAssetColumn[]
 
   @@index([templateId])
   @@index([categoryId])

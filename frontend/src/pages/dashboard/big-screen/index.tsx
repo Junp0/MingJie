@@ -9,15 +9,8 @@ import { Bar, Column, Line, Pie, Rose } from '@ant-design/plots';
 import { PageContainer } from '@ant-design/pro-components';
 import { Badge, Card, Col, Progress, Row, Space, Tag, Typography } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
-import { listImportTasks } from '@/services/data-assets/importTaskStore';
-import { listAssetGroups } from '@/services/data-assets/assetGroupStore';
-import { listClassificationTasks } from '@/services/data-classification/classificationTaskStore';
-import {
-  collectDataTypes,
-  getClassificationTemplateById,
-  listClassificationTemplates,
-} from '@/services/data-classification/templateStore';
-import { listProtectionFeatures } from '@/services/data-classification/protectionFeatureStore';
+import { collectDataTypes } from '@/services/data-classification/templateStore';
+import { useDashboardData } from '../shared/useDashboardData';
 import './index.less';
 
 const { Paragraph, Text, Title } = Typography;
@@ -40,19 +33,15 @@ const BigScreen: React.FC = () => {
     return () => window.clearInterval(timer);
   }, []);
 
-  const importTasks = useMemo(() => listImportTasks(), []);
-  const assetGroups = useMemo(() => listAssetGroups(), []);
-  const classificationTasks = useMemo(() => listClassificationTasks(), []);
-  const templateSummaries = useMemo(() => listClassificationTemplates(), []);
-  const templates = useMemo(
-    () =>
-      templateSummaries
-        .map((template) => getClassificationTemplateById(template.id))
-        .filter((template): template is NonNullable<ReturnType<typeof getClassificationTemplateById>> => Boolean(template)),
-    [templateSummaries],
-  );
-  const maskingFeatures = useMemo(() => listProtectionFeatures('masking'), []);
-  const encryptionFeatures = useMemo(() => listProtectionFeatures('encryption'), []);
+  const {
+    importTasks,
+    assetGroups,
+    classificationTasks,
+    templateSummaries,
+    templates,
+    maskingFeatures,
+    encryptionFeatures,
+  } = useDashboardData();
 
   const templateDataTypes = useMemo(
     () => templates.flatMap((template) => template.categories.flatMap((category) => collectDataTypes(category))),

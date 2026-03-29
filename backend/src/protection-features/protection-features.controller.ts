@@ -11,7 +11,7 @@ export class ProtectionFeaturesController {
   constructor(private readonly protectionFeaturesService: ProtectionFeaturesService) {}
 
   @Get()
-  findAll(@Query('type') type?: ProtectionFeatureType) {
+  findAll(@Query('type') type?: string) {
     return this.protectionFeaturesService.findAll(type);
   }
 

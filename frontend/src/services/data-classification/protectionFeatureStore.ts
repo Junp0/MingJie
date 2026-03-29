@@ -92,7 +92,11 @@ const mapFeature = (item: BackendFeature): ProtectionFeatureRecord => ({
 export const getProtectionFeatureMatcherLabel = (matcher: ProtectionFeatureMatcher): string => MATCHER_LABEL_MAP[matcher];
 
 export const listProtectionFeatures = async (type: ProtectionFeatureType): Promise<ProtectionFeatureRecord[]> => {
-  const data = await request<BackendFeature[]>(`/api/protection-features?type=${type === 'masking' ? 'MASKING' : 'ENCRYPTION'}`);
+  const data = await request<BackendFeature[]>('/api/protection-features', {
+    params: {
+      type: type === 'masking' ? 'MASKING' : 'ENCRYPTION',
+    },
+  });
   return data.map(mapFeature).sort((left, right) => right.priority - left.priority);
 };
 

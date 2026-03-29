@@ -490,11 +490,19 @@ const DataAssetList: React.FC = () => {
     return filteredData;
   };
 
-  const refreshPageData = () => {
-    setGroups(listAssetGroups());
-    setAssets(listDataAssets());
+  const refreshPageData = async () => {
+    const [nextGroups, nextAssets] = await Promise.all([
+      listAssetGroups(),
+      listDataAssets(),
+    ]);
+    setGroups(nextGroups);
+    setAssets(nextAssets);
     setTableVersion((current) => current + 1);
   };
+
+  useEffect(() => {
+    void refreshPageData();
+  }, []);
 
   const closeGroupModal = () => {
     setGroupModalOpen(false);
@@ -510,8 +518,8 @@ const DataAssetList: React.FC = () => {
     assetForm.resetFields();
   };
 
-  const handleRefresh = () => {
-    refreshPageData();
+  const handleRefresh = async () => {
+    await refreshPageData();
     setTreeKeyword('');
     setSelectedGroupId(ROOT_GROUP_ID);
     setExpandedKeys(getDefaultExpandedGroupIds());
@@ -578,11 +586,11 @@ const DataAssetList: React.FC = () => {
           : group,
       );
 
-      saveAssetGroups(nextGroups);
+      await saveAssetGroups(nextGroups);
       if (currentGroup.name !== values.name.trim()) {
-        syncDataAssetGroupName(editingGroupId, values.name.trim());
+        await syncDataAssetGroupName();
       }
-      refreshPageData();
+      await refreshPageData();
       messageApi.success('分组已更新');
     } else {
       const parent =
@@ -594,9 +602,9 @@ const DataAssetList: React.FC = () => {
         return;
       }
 
-      const newGroup = createAssetGroupRecord(values, parent);
-      saveAssetGroups([...groups, newGroup]);
-      refreshPageData();
+      const newGroup = await createAssetGroupRecord(values, parent);
+      await saveAssetGroups([...groups, newGroup]);
+      await refreshPageData();
       setSelectedGroupId(newGroup.id);
       setExpandedKeys((current) =>
         uniqueArray([...current, ...(targetParentId ? [targetParentId] : []), newGroup.id]),
@@ -636,8 +644,8 @@ const DataAssetList: React.FC = () => {
       cancelText: '取消',
       okButtonProps: { danger: true },
       onOk: () => {
-        saveAssetGroups(groups.filter((item) => item.id !== group.id));
-        refreshPageData();
+        void saveAssetGroups(groups.filter((item) => item.id !== group.id));
+        void refreshPageData();
         setSelectedGroupId(group.parentId ?? ROOT_GROUP_ID);
         messageApi.success('分组已删除');
       },

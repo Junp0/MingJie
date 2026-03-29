@@ -34,6 +34,21 @@ export class AutoScanController {
     return this.autoScanService.removeRule(id);
   }
 
+  @Post('execute')
+  executeScan() {
+    return this.autoScanService.executeScan();
+  }
+
+  @Patch('results/:id/ignore')
+  ignoreResult(@Param('id') id: string, @Body('reason') reason: string) {
+    return this.autoScanService.ignoreResult(id, reason);
+  }
+
+  @Post('results/:id/unignore')
+  cancelIgnoreResult(@Param('id') id: string) {
+    return this.autoScanService.cancelIgnoreResult(id);
+  }
+
   @Post('results/:id/claim')
   claimResult(@Param('id') id: string) {
     return this.autoScanService.claimResult(id);

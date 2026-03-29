@@ -89,7 +89,15 @@ export const errorConfig: RequestConfig = {
   requestInterceptors: [
     (config: RequestOptions) => {
       // 拦截请求配置，进行个性化处理。
-      const url = config?.url?.concat('?token=123');
+      const currentUrl = config?.url;
+      if (!currentUrl) {
+        return config;
+      }
+
+      const hasToken = /(?:\?|&)token=/.test(currentUrl);
+      const url = hasToken
+        ? currentUrl
+        : `${currentUrl}${currentUrl.includes('?') ? '&' : '?'}token=123`;
       return { ...config, url };
     },
   ],

@@ -27,6 +27,16 @@ export class CreateImportTaskDto {
   @IsString()
   databaseName?: string;
 
+  @ApiPropertyOptional({ example: 'importer' })
+  @IsOptional()
+  @IsString()
+  sourceUsername?: string;
+
+  @ApiPropertyOptional({ example: 'importer123' })
+  @IsOptional()
+  @IsString()
+  sourcePassword?: string;
+
   @ApiProperty()
   @IsString()
   assetGroupId!: string;

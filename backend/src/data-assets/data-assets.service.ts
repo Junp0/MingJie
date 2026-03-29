@@ -20,6 +20,7 @@ export class DataAssetsService {
         {
           name: '用户中心 MySQL 主库',
           sourceType: 'mysql',
+          sourceDatabaseName: 'user_center',
           ipAddress: '10.10.0.12',
           port: 3306,
           status: CommonStatus.ACTIVE,
@@ -28,6 +29,10 @@ export class DataAssetsService {
           department: '数据平台部',
           tags: JSON.stringify(['mysql', '用户', '核心']),
           description: '用户账号、手机号、实名信息主库',
+          tableCount: 12,
+          fieldCount: 96,
+          sizeBytes: 52428800,
+          recordCount: 250000,
           assetGroupId: firstGroup.id,
         },
       ],
@@ -47,6 +52,11 @@ export class DataAssetsService {
       data: {
         ...dto,
         tags: dto.tags ?? [],
+        sourceDatabaseName: dto.sourceDatabaseName,
+        tableCount: dto.tableCount ?? 0,
+        fieldCount: dto.fieldCount ?? 0,
+        sizeBytes: dto.sizeBytes ?? 0,
+        recordCount: dto.recordCount ?? 0,
       },
       include: { assetGroup: true },
     });

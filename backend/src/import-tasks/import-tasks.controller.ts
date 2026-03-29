@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { ApiTags } from '@nestjs/swagger';
 import { ImportTasksService } from './import-tasks.service';
 import { CreateImportTaskDto } from './dto/create-import-task.dto';
+import { DiscoverImportDatabasesDto } from './dto/discover-import-databases.dto';
 import { UpdateImportTaskDto } from './dto/update-import-task.dto';
 
 @ApiTags('import-tasks')
@@ -12,6 +13,11 @@ export class ImportTasksController {
   @Get()
   findAll() {
     return this.importTasksService.findAll();
+  }
+
+  @Post('discover-databases')
+  discoverDatabases(@Body() dto: DiscoverImportDatabasesDto) {
+    return this.importTasksService.discoverDatabases(dto);
   }
 
   @Post()

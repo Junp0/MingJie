@@ -21,7 +21,7 @@ const TemplateAdd: React.FC = () => {
     setLoading(true);
 
     try {
-      const template = createClassificationTemplate(values);
+      const template = await createClassificationTemplate(values);
       messageApi.success('模板创建成功');
       navigate(`/data-classification/template-detail/${template.id}`);
     } catch (error) {

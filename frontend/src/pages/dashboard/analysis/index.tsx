@@ -8,26 +8,17 @@ import {
 import {
   ApartmentOutlined,
   DatabaseOutlined,
-  FolderOpenOutlined,
   SafetyCertificateOutlined,
   TagsOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { Card, Col, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { Card, Col, Row, Space, Statistic, Typography } from 'antd';
 import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
-import { listImportTasks } from '@/services/data-assets/importTaskStore';
-import { listAssetGroups } from '@/services/data-assets/assetGroupStore';
-import { listClassificationTasks } from '@/services/data-classification/classificationTaskStore';
-import {
-  collectDataTypes,
-  countCategoryNodes,
-  getClassificationTemplateById,
-  listClassificationTemplates,
-} from '@/services/data-classification/templateStore';
-import { listProtectionFeatures } from '@/services/data-classification/protectionFeatureStore';
+import { collectDataTypes, countCategoryNodes } from '@/services/data-classification/templateStore';
+import { useDashboardData } from '../shared/useDashboardData';
 
-const { Paragraph, Text, Title } = Typography;
+const { Paragraph, Text } = Typography;
 
 const importSourceLabelMap = {
   database: '数据库',
@@ -62,19 +53,15 @@ const aggregateByKey = <T,>(
 };
 
 const Analysis: React.FC = () => {
-  const importTasks = useMemo(() => listImportTasks(), []);
-  const assetGroups = useMemo(() => listAssetGroups(), []);
-  const classificationTasks = useMemo(() => listClassificationTasks(), []);
-  const templateSummaries = useMemo(() => listClassificationTemplates(), []);
-  const templates = useMemo(
-    () =>
-      templateSummaries
-        .map((template) => getClassificationTemplateById(template.id))
-        .filter((template): template is NonNullable<ReturnType<typeof getClassificationTemplateById>> => Boolean(template)),
-    [templateSummaries],
-  );
-  const maskingFeatures = useMemo(() => listProtectionFeatures('masking'), []);
-  const encryptionFeatures = useMemo(() => listProtectionFeatures('encryption'), []);
+  const {
+    importTasks,
+    assetGroups,
+    classificationTasks,
+    templateSummaries,
+    templates,
+    maskingFeatures,
+    encryptionFeatures,
+  } = useDashboardData();
 
   const allDataTypes = useMemo(
     () => templates.flatMap((template) => template.categories.flatMap((category) => collectDataTypes(category))),

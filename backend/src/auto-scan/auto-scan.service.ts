@@ -8,6 +8,33 @@ import { UpdateAutoScanRuleDto } from './dto/update-auto-scan-rule.dto';
 export class AutoScanService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private parsePort(value?: string | null): number {
+    if (!value) return 3306;
+    const matched = value.match(/\d+/);
+    return matched ? Number(matched[0]) : 3306;
+  }
+
+  private buildIpAddress(ruleName: string, sequence: number): string {
+    const cidrHost = ruleName.match(/(\d+\.\d+\.\d+)\.\d+(?:\/\d+)?/);
+    if (cidrHost) {
+      return `${cidrHost[1]}.${10 + sequence}`;
+    }
+
+    const directHost = ruleName.match(/(\d+\.\d+\.\d+\.\d+)/);
+    if (directHost) {
+      return directHost[1];
+    }
+
+    return `10.10.${Math.min(99, sequence)}.${20 + sequence}`;
+  }
+
+  private async findResultWithRelations(id: string) {
+    return this.prisma.autoScanResult.findUnique({
+      where: { id },
+      include: { scanRule: true, assetGroup: true, dataAsset: true },
+    });
+  }
+
   async seed() {
     const count = await this.prisma.autoScanRule.count();
     if (count > 0) return;
@@ -80,6 +107,76 @@ export class AutoScanService {
     return this.prisma.autoScanRule.delete({ where: { id } });
   }
 
+  async executeScan() {
+    await this.seed();
+    const rules = await this.prisma.autoScanRule.findMany({
+      where: { status: ScanTaskStatus.RUNNING },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let createdResultCount = 0;
+
+    for (const [index, rule] of rules.entries()) {
+      const existingCount = await this.prisma.autoScanResult.count({
+        where: { scanRuleId: rule.id },
+      });
+
+      await this.prisma.autoScanResult.create({
+        data: {
+          scanRuleId: rule.id,
+          assetGroupId: rule.assetGroupId,
+          sourceName: `${rule.name}-scan-${existingCount + 1}`,
+          sourceType: 'mysql',
+          ipAddress: this.buildIpAddress(rule.name, existingCount + index + 1),
+          port: this.parsePort(rule.sourceType),
+          databaseName: `auto_scan_${existingCount + 1}`,
+          owner: '自动扫描',
+          department: '数据治理平台',
+          status: ScanTaskStatus.COMPLETED,
+          claimed: false,
+        },
+      });
+      createdResultCount += 1;
+    }
+
+    const pendingCount = await this.prisma.autoScanResult.count({
+      where: { claimed: false, ignoredAt: null },
+    });
+
+    return {
+      touchedRuleCount: rules.length,
+      createdResultCount,
+      matchedResultCount: pendingCount,
+    };
+  }
+
+  async ignoreResult(id: string, reason: string) {
+    const normalizedReason = reason?.trim();
+    if (!normalizedReason) return null;
+
+    await this.prisma.autoScanResult.update({
+      where: { id },
+      data: {
+        ignoreReason: normalizedReason,
+        ignoredAt: new Date(),
+      },
+    });
+
+    return this.findResultWithRelations(id);
+  }
+
+  async cancelIgnoreResult(id: string) {
+    await this.prisma.autoScanResult.update({
+      where: { id },
+      data: {
+        ignoreReason: null,
+        ignoredAt: null,
+      },
+    });
+
+    return this.findResultWithRelations(id);
+  }
+
   async claimResult(id: string) {
     const result = await this.prisma.autoScanResult.findUnique({ where: { id } });
     if (!result) return null;
@@ -111,12 +208,13 @@ export class AutoScanService {
 
     await this.prisma.autoScanResult.update({
       where: { id },
-      data: { claimed: true },
+      data: {
+        claimed: true,
+        ignoreReason: null,
+        ignoredAt: null,
+      },
     });
 
-    return this.prisma.autoScanResult.findUnique({
-      where: { id },
-      include: { scanRule: true, assetGroup: true, dataAsset: true },
-    });
+    return this.findResultWithRelations(id);
   }
 }

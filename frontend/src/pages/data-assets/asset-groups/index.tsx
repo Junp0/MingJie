@@ -312,6 +312,23 @@ const AssetGroups: React.FC = () => {
   const flatFilteredGroups = useMemo(() => flattenGroupTree(filteredTree), [filteredTree]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadGroups = async () => {
+      const initialGroups = await listAssetGroups();
+      if (!cancelled) {
+        setGroups(initialGroups);
+      }
+    };
+
+    void loadGroups();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!flatFilteredGroups.some((group) => group.id === selectedGroupId)) {
       setSelectedGroupId(flatFilteredGroups[0]?.id ?? '');
     }
@@ -402,14 +419,14 @@ const AssetGroups: React.FC = () => {
             }
           : group,
       );
-      saveAssetGroups(nextGroups);
+      await saveAssetGroups(nextGroups);
       setGroups(nextGroups);
       messageApi.success('分组已更新');
     } else {
       const parent = targetParentId ? groups.find((group) => group.id === targetParentId) ?? null : null;
-      const newGroup = createAssetGroupRecord(values, parent);
+      const newGroup = await createAssetGroupRecord(values, parent);
       const nextGroups = [...groups, newGroup];
-      saveAssetGroups(nextGroups);
+      await saveAssetGroups(nextGroups);
       setGroups(nextGroups);
       setSelectedGroupId(newGroup.id);
       if (targetParentId) {
@@ -438,7 +455,7 @@ const AssetGroups: React.FC = () => {
       okButtonProps: { danger: true },
       onOk: () => {
         const nextGroups = groups.filter((item) => item.id !== group.id);
-        saveAssetGroups(nextGroups);
+        void saveAssetGroups(nextGroups);
         setGroups(nextGroups);
         setSelectedGroupId(group.parentId ?? '');
         messageApi.success('分组已删除');
@@ -496,8 +513,8 @@ const AssetGroups: React.FC = () => {
           <Button
             key="reload"
             icon={<ReloadOutlined />}
-            onClick={() => {
-              const resetGroups = resetAssetGroups();
+            onClick={async () => {
+              const resetGroups = await resetAssetGroups();
               setGroups(resetGroups);
               setKeyword('');
               setDepartmentFilter('all');

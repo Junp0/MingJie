@@ -8,6 +8,22 @@ import { UpdateProtectionFeatureDto } from './dto/update-protection-feature.dto'
 export class ProtectionFeaturesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private normalizeType(type?: string): ProtectionFeatureType | undefined {
+    if (!type) {
+      return undefined;
+    }
+
+    const normalizedType = type.split(/[?&]/)[0];
+    if (normalizedType === ProtectionFeatureType.MASKING) {
+      return ProtectionFeatureType.MASKING;
+    }
+    if (normalizedType === ProtectionFeatureType.ENCRYPTION) {
+      return ProtectionFeatureType.ENCRYPTION;
+    }
+
+    return undefined;
+  }
+
   async seed() {
     const count = await this.prisma.protectionFeature.count();
     if (count > 0) return;
@@ -50,10 +66,11 @@ export class ProtectionFeaturesService {
     });
   }
 
-  async findAll(type?: ProtectionFeatureType) {
+  async findAll(type?: string) {
     await this.seed();
+    const normalizedType = this.normalizeType(type);
     return this.prisma.protectionFeature.findMany({
-      where: type ? { featureType: type } : undefined,
+      where: normalizedType ? { featureType: normalizedType } : undefined,
       include: { creator: true },
       orderBy: [{ featureType: 'asc' }, { priority: 'asc' }, { createdAt: 'desc' }],
     });

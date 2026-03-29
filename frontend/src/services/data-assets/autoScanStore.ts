@@ -60,6 +60,8 @@ type BackendResult = {
   port: number;
   status: 'DRAFT' | 'RUNNING' | 'COMPLETED' | 'FAILED';
   claimed: boolean;
+  ignoreReason?: string | null;
+  ignoredAt?: string | null;
   createdAt: string;
   updatedAt: string;
   scanRule?: { id: string; name: string } | null;
@@ -87,6 +89,7 @@ const getScheduleLabel = (scheduleMode: AutoScanScheduleMode, firstScanTime: str
 const statusMap = (status: BackendRule['status']): AutoScanRuleStatus => (status === 'RUNNING' ? 'enabled' : 'disabled');
 const resultStatusMap = (item: BackendResult): AutoScanResultStatus => {
   if (item.claimed) return 'claimed';
+  if (item.ignoredAt || item.ignoreReason) return 'ignored';
   return 'pending';
 };
 
@@ -122,6 +125,8 @@ const mapResult = (item: BackendResult): AutoScanResult => ({
   discoveredAt: formatDateTime(item.createdAt),
   lastSeenAt: formatDateTime(item.updatedAt),
   status: resultStatusMap(item),
+  ignoreReason: item.ignoreReason ?? undefined,
+  ignoredAt: formatDateTime(item.ignoredAt ?? undefined) || undefined,
   claimedAssetId: item.dataAsset?.id,
   claimedAssetName: item.dataAsset?.name,
   claimedAt: item.claimed ? formatDateTime(item.updatedAt) : undefined,
@@ -178,13 +183,12 @@ export const toggleAutoScanRuleStatus = async (ruleId: string, status: AutoScanR
 };
 
 export const executeAutoScan = async (): Promise<{ touchedRuleCount: number; createdResultCount: number; matchedResultCount: number }> => {
-  const rules = await listAutoScanRules();
-  const results = await listAutoScanResults();
-  return {
-    touchedRuleCount: rules.length,
-    createdResultCount: 0,
-    matchedResultCount: results.filter((item) => item.status === 'pending').length,
-  };
+  return request<{ touchedRuleCount: number; createdResultCount: number; matchedResultCount: number }>(
+    '/api/auto-scan/execute',
+    {
+      method: 'POST',
+    },
+  );
 };
 
 export const getAutoScanResultById = async (resultId: string): Promise<AutoScanResult | null> => {
@@ -193,15 +197,20 @@ export const getAutoScanResultById = async (resultId: string): Promise<AutoScanR
 };
 
 export const ignoreAutoScanResult = async (resultId: string, reason: string): Promise<AutoScanResult | null> => {
-  const result = await getAutoScanResultById(resultId);
-  if (!result) return null;
-  return { ...result, status: 'ignored', ignoreReason: reason.trim(), ignoredAt: formatDateTime(new Date().toISOString()) };
+  const data = await request<BackendResult>(`/api/auto-scan/results/${resultId}/ignore`, {
+    method: 'PATCH',
+    data: {
+      reason: reason.trim(),
+    },
+  });
+  return mapResult(data);
 };
 
 export const cancelIgnoreAutoScanResult = async (resultId: string): Promise<AutoScanResult | null> => {
-  const result = await getAutoScanResultById(resultId);
-  if (!result) return null;
-  return { ...result, status: 'pending', ignoreReason: undefined, ignoredAt: undefined };
+  const data = await request<BackendResult>(`/api/auto-scan/results/${resultId}/unignore`, {
+    method: 'POST',
+  });
+  return mapResult(data);
 };
 
 export const claimAutoScanResult = async (resultId: string, _values: { assetId: string; assetName: string }): Promise<AutoScanResult | null> => {

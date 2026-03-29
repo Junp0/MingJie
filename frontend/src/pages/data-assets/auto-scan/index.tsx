@@ -208,9 +208,9 @@ const AutoScanDataAssetsPage: React.FC = () => {
           <Switch
             size="small"
             checked={record.status === 'enabled'}
-            onChange={(checked) => {
-              toggleAutoScanRuleStatus(record.id, checked ? 'enabled' : 'disabled');
-              refreshPageData();
+            onChange={async (checked) => {
+              await toggleAutoScanRuleStatus(record.id, checked ? 'enabled' : 'disabled');
+              await refreshPageData();
               messageApi.success(`规则已${checked ? '启用' : '停用'}：${formatRuleIdentity(record)}`);
             }}
           />
@@ -354,9 +354,9 @@ const AutoScanDataAssetsPage: React.FC = () => {
                 Modal.confirm({
                   title: '确认取消忽略',
                   content: `取消后 ${formatResultIdentity(record)} 会重新回到待处理队列。`,
-                  onOk: () => {
-                    cancelIgnoreAutoScanResult(record.id);
-                    refreshPageData();
+                  onOk: async () => {
+                    await cancelIgnoreAutoScanResult(record.id);
+                    await refreshPageData();
                     messageApi.success(`已取消忽略：${formatResultIdentity(record)}`);
                   },
                 });
@@ -393,9 +393,9 @@ const AutoScanDataAssetsPage: React.FC = () => {
         <Button
           key="execute"
           type="primary"
-          onClick={() => {
-            const execution = executeAutoScan();
-            refreshPageData();
+          onClick={async () => {
+            const execution = await executeAutoScan();
+            await refreshPageData();
             messageApi.success(
               `本次扫描已执行 ${execution.touchedRuleCount} 条启用规则，新增 ${execution.createdResultCount} 条发现结果。`,
             );
@@ -527,7 +527,7 @@ const AutoScanDataAssetsPage: React.FC = () => {
         <Form<RuleFormValues>
           form={ruleForm}
           layout="vertical"
-          onFinish={(values) => {
+          onFinish={async (values) => {
             const payload: AutoScanRuleFormValues = buildAutoScanRuleFormValues({
               ipRange: values.ipRange,
               portRange: values.portRange,
@@ -537,17 +537,17 @@ const AutoScanDataAssetsPage: React.FC = () => {
             });
 
             if (editingRule) {
-              updateAutoScanRule(editingRule.id, payload);
+              await updateAutoScanRule(editingRule.id, payload);
               messageApi.success(`规则已更新：${values.ipRange} / ${formatPortRange(values.portRange)}`);
             } else {
-              createAutoScanRule(payload);
+              await createAutoScanRule(payload);
               messageApi.success(`规则已创建：${values.ipRange} / ${formatPortRange(values.portRange)}`);
             }
 
             setRuleModalOpen(false);
             setEditingRule(null);
             ruleForm.resetFields();
-            refreshPageData();
+            await refreshPageData();
           }}
         >
           <Row gutter={16}>
@@ -628,16 +628,16 @@ const AutoScanDataAssetsPage: React.FC = () => {
         <Form<IgnoreFormValues>
           form={ignoreForm}
           layout="vertical"
-          onFinish={(values) => {
+          onFinish={async (values) => {
             if (!ignoreTarget) {
               return;
             }
 
-            ignoreAutoScanResult(ignoreTarget.id, values.reason);
+            await ignoreAutoScanResult(ignoreTarget.id, values.reason);
             setIgnoreModalOpen(false);
             setIgnoreTarget(null);
             ignoreForm.resetFields();
-            refreshPageData();
+            await refreshPageData();
             messageApi.success(`已忽略：${formatResultIdentity(ignoreTarget)}`);
           }}
         >

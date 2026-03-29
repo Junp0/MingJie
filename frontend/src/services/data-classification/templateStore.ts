@@ -139,6 +139,22 @@ export const LEVEL_COLOR_PRESET_OPTIONS: Array<{ value: string; label: string }>
   { value: '#eb2f96', label: '洋红' },
 ];
 
+const STANDARD_DEFAULT_LEVEL_DEFINITIONS: LevelDefinitionItem[] = [
+  { id: 'level-l1-standard', code: 'L1', name: '公开数据', description: '已公开发布或可面向公众提供的数据，泄露后通常不会造成明显损害。', color: '#52c41a', isSensitive: false, needMask: false, needEncrypt: false, note: '适用于公告、公示信息、公开产品目录、匿名统计结果等。' },
+  { id: 'level-l2-standard', code: 'L2', name: '内部数据', description: '仅限组织内部使用的一般业务与管理数据，外泄会造成有限运营影响。', color: '#1677ff', isSensitive: false, needMask: false, needEncrypt: false, note: '适用于内部台账、一般运营数据、组织通讯录等。' },
+  { id: 'level-l3-standard', code: 'L3', name: '敏感数据', description: '涉及敏感个人信息或重要业务明细，需强化访问控制与最小化暴露。', color: '#fa8c16', isSensitive: true, needMask: true, needEncrypt: true, note: '适用于手机号、姓名与证件组合、交易流水、客户身份信息等。' },
+  { id: 'level-l4-standard', code: 'L4', name: '重要数据', description: '对业务连续性、行业监管、公共利益或组织核心竞争力具有较高价值的数据。', color: '#f5222d', isSensitive: true, needMask: true, needEncrypt: true, note: '适用于核心经营指标、风控策略变量、重要业务清单、监管报送数据等。' },
+  { id: 'level-l5-standard', code: 'L5', name: '核心数据', description: '一旦泄露、篡改或破坏，可能对国家安全、关键业务或重大公共利益造成严重危害。', color: '#722ed1', isSensitive: true, needMask: true, needEncrypt: true, note: '适用于主密钥材料、核心控制参数、最高敏感认证要素等。' },
+];
+
+const STANDARD_LEVEL_NAME_MAP: Record<string, string> = {
+  L1: '公开数据',
+  L2: '内部数据',
+  L3: '敏感数据',
+  L4: '重要数据',
+  L5: '核心数据',
+};
+
 type BackendTemplate = {
   id: string;
   templateName: string;
@@ -218,11 +234,11 @@ const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().to
 
 const normalizeColor = (color?: string | null, levelCode?: string) => {
   if (color && LEVEL_COLOR_PRESET_OPTIONS.some((item) => item.value === color.trim())) return color.trim();
-  if (levelCode === 'L1') return '#f5222d';
-  if (levelCode === 'L2') return '#fa8c16';
-  if (levelCode === 'L3') return '#fadb14';
-  if (levelCode === 'L4') return '#52c41a';
-  if (levelCode === 'L5') return '#13c2c2';
+  if (levelCode === 'L1') return '#52c41a';
+  if (levelCode === 'L2') return '#1677ff';
+  if (levelCode === 'L3') return '#fa8c16';
+  if (levelCode === 'L4') return '#f5222d';
+  if (levelCode === 'L5') return '#722ed1';
   return '#1677ff';
 };
 
@@ -308,7 +324,7 @@ const mapTemplateRecord = (item: BackendTemplate): ClassificationTemplateRecord 
     note: level.note ?? '',
   }));
 
-  const normalizedLevels = levelDefinitions.length ? levelDefinitions : DEFAULT_LEVEL_DEFINITIONS;
+  const normalizedLevels = levelDefinitions.length ? levelDefinitions : STANDARD_DEFAULT_LEVEL_DEFINITIONS;
 
   return {
     id: item.id,
@@ -341,8 +357,8 @@ const fetchTemplates = async (): Promise<ClassificationTemplateRecord[]> => {
   return data.map(mapTemplateRecord);
 };
 
-export const getDefaultLevelDefinitions = (): LevelDefinitionItem[] => JSON.parse(JSON.stringify(DEFAULT_LEVEL_DEFINITIONS));
-export const getLevelNameByCode = (levelCode: LevelCode): string => LEVEL_NAME_MAP[levelCode] ?? levelCode;
+export const getDefaultLevelDefinitions = (): LevelDefinitionItem[] => JSON.parse(JSON.stringify(STANDARD_DEFAULT_LEVEL_DEFINITIONS));
+export const getLevelNameByCode = (levelCode: LevelCode): string => STANDARD_LEVEL_NAME_MAP[levelCode] ?? levelCode;
 export const getRuleMatchModeLabel = (matchMode: RuleMatchMode): string => RULE_MATCH_MODE_LABEL_MAP[matchMode];
 export const getRuleMatchTargetLabel = (target: RuleMatchTarget): string => RULE_MATCH_TARGET_LABEL_MAP[target];
 export const getRuleMatcherLabel = (matcher: RuleMatcher): string => RULE_MATCHER_LABEL_MAP[matcher];
@@ -415,7 +431,12 @@ export const deleteClassificationTemplate = async (templateId: string): Promise<
   return true;
 };
 
-export const initializeClassificationTemplate = async (templateId: string): Promise<ClassificationTemplateRecord | null> => getClassificationTemplateById(templateId);
+export const initializeClassificationTemplate = async (templateId: string): Promise<ClassificationTemplateRecord | null> => {
+  const data = await request<BackendTemplate>(`/api/classification-templates/${templateId}/initialize`, {
+    method: 'POST',
+  });
+  return data ? mapTemplateRecord(data) : null;
+};
 
 export const addClassificationLevelDefinition = async (templateId: string, values: LevelDefinitionFormValues): Promise<ClassificationTemplateRecord | null> => {
   await request('/api/classification-template-details/level-definitions', {

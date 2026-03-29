@@ -98,6 +98,7 @@ type BackendAsset = {
   id: string;
   name: string;
   sourceType: string;
+  sourceDatabaseName?: string | null;
   ipAddress: string;
   port: number;
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
@@ -106,6 +107,10 @@ type BackendAsset = {
   department: string;
   tags?: string[];
   description?: string | null;
+  tableCount?: number;
+  fieldCount?: number;
+  sizeBytes?: number;
+  recordCount?: number;
   assetGroupId: string;
   scanResultId?: string | null;
   createdAt: string;
@@ -156,15 +161,15 @@ const mapAsset = (item: BackendAsset): DataAssetRecord => ({
   updateTime: formatDateTime(item.updatedAt),
   lastSyncTime: formatDateTime(item.updatedAt),
   syncStatus: 'success',
-  tableCount: 0,
-  fieldCount: 0,
-  size: 0,
-  recordCount: 0,
+  tableCount: item.tableCount ?? 0,
+  fieldCount: item.fieldCount ?? 0,
+  size: item.sizeBytes ?? 0,
+  recordCount: item.recordCount ?? 0,
   description: item.description ?? '',
   tags: Array.isArray(item.tags) ? item.tags : [],
   owner: item.owner,
   department: item.department,
-  sourceFrom: item.scanResultId ? 'scan' : 'manual',
+  sourceFrom: item.scanResultId ? 'scan' : item.sourceDatabaseName ? 'import' : 'manual',
   scanResultId: item.scanResultId ?? undefined,
 });
 
@@ -197,6 +202,11 @@ export const createDataAsset = async (values: CreateDataAssetValues): Promise<Da
       department: values.department.trim(),
       tags: values.tags ?? [],
       description: values.description?.trim() ?? '',
+      sourceDatabaseName: values.sourceFrom === 'import' ? values.name.trim() : undefined,
+      tableCount: values.tableCount ?? 0,
+      fieldCount: values.fieldCount ?? 0,
+      sizeBytes: values.size ?? 0,
+      recordCount: values.recordCount ?? 0,
       assetGroupId: values.assetGroupId,
     },
   });

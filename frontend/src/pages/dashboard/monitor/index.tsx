@@ -6,11 +6,8 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { Badge, Card, Col, Progress, Row, Space, Table, Tag, Typography } from 'antd';
-import React, { useMemo } from 'react';
-import { listImportTasks } from '@/services/data-assets/importTaskStore';
-import { listAssetGroups } from '@/services/data-assets/assetGroupStore';
-import { listClassificationTasks } from '@/services/data-classification/classificationTaskStore';
-import { listProtectionFeatures } from '@/services/data-classification/protectionFeatureStore';
+import React from 'react';
+import { useDashboardData } from '../shared/useDashboardData';
 
 const { Paragraph, Text } = Typography;
 
@@ -23,11 +20,13 @@ const statusBadgeMap = {
 } as const;
 
 const Monitor: React.FC = () => {
-  const importTasks = useMemo(() => listImportTasks(), []);
-  const classificationTasks = useMemo(() => listClassificationTasks(), []);
-  const assetGroups = useMemo(() => listAssetGroups(), []);
-  const maskingFeatures = useMemo(() => listProtectionFeatures('masking'), []);
-  const encryptionFeatures = useMemo(() => listProtectionFeatures('encryption'), []);
+  const {
+    importTasks,
+    classificationTasks,
+    assetGroups,
+    maskingFeatures,
+    encryptionFeatures,
+  } = useDashboardData();
 
   const failedImports = importTasks.filter((task) => task.status === 'failed');
   const failedClassificationTasks = classificationTasks.filter((task) => task.status === 'failed');

@@ -72,12 +72,73 @@ const mapAssetGroup = (item: BackendAssetGroup): AssetGroup => ({
   fieldCount: 0,
 });
 
+const toUpdatePayload = (group: AssetGroup) => ({
+  name: group.name.trim(),
+  description: group.description.trim(),
+  owner: group.owner.trim(),
+  department: group.department.trim(),
+  status: reverseStatusMap[group.status],
+  parentId: group.parentId,
+  level: group.level,
+});
+
 export const listAssetGroups = async (): Promise<AssetGroup[]> => {
   const data = await request<BackendAssetGroup[]>('/api/asset-groups');
   return data.map(mapAssetGroup).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
 };
 
-export const saveAssetGroups = async (groups: AssetGroup[]): Promise<AssetGroup[]> => groups;
+export const updateAssetGroup = async (group: AssetGroup): Promise<AssetGroup> => {
+  const data = await request<BackendAssetGroup>(`/api/asset-groups/${group.id}`, {
+    method: 'PATCH',
+    data: toUpdatePayload(group),
+  });
+
+  return mapAssetGroup(data);
+};
+
+export const deleteAssetGroup = async (groupId: string): Promise<boolean> => {
+  await request(`/api/asset-groups/${groupId}`, {
+    method: 'DELETE',
+  });
+  return true;
+};
+
+export const saveAssetGroups = async (groups: AssetGroup[]): Promise<AssetGroup[]> => {
+  const currentGroups = await listAssetGroups();
+  const currentGroupMap = new Map(currentGroups.map((group) => [group.id, group]));
+  const nextGroupIds = new Set(groups.map((group) => group.id));
+
+  const deletedGroups = currentGroups
+    .filter((group) => !nextGroupIds.has(group.id))
+    .sort((left, right) => right.level - left.level);
+
+  for (const group of deletedGroups) {
+    await deleteAssetGroup(group.id);
+  }
+
+  for (const group of groups) {
+    const current = currentGroupMap.get(group.id);
+    if (!current) {
+      continue;
+    }
+
+    const hasChanged =
+      current.name !== group.name ||
+      current.description !== group.description ||
+      current.owner !== group.owner ||
+      current.department !== group.department ||
+      current.status !== group.status ||
+      current.parentId !== group.parentId ||
+      current.level !== group.level;
+
+    if (hasChanged) {
+      await updateAssetGroup(group);
+    }
+  }
+
+  return listAssetGroups();
+};
+
 export const resetAssetGroups = async (): Promise<AssetGroup[]> => listAssetGroups();
 
 export const getAssetGroupById = async (groupId: string): Promise<AssetGroup | null> => {

@@ -471,10 +471,11 @@ const TemplateDetail: React.FC = () => {
       note: values.note.trim(),
     };
 
-    const updated =
+    const updated = await (
       levelModalMode === 'edit' && editingLevelDefinition
         ? updateClassificationLevelDefinition(template.id, editingLevelDefinition.id, payload)
-        : addClassificationLevelDefinition(template.id, payload);
+        : addClassificationLevelDefinition(template.id, payload)
+    );
 
     if (!updated) {
       messageApi.error('级别定义保存失败，请重试');
@@ -508,8 +509,8 @@ const TemplateDetail: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const updated = deleteClassificationLevelDefinition(template.id, levelDefinition.id);
+      onOk: async () => {
+        const updated = await deleteClassificationLevelDefinition(template.id, levelDefinition.id);
         if (!updated) {
           messageApi.error('删除级别定义失败，请重试');
           return;
@@ -531,8 +532,8 @@ const TemplateDetail: React.FC = () => {
       content: '初始化后会用当前模板类型的内置分类、级别和识别规则覆盖当前配置，是否继续？',
       okText: '确认初始化',
       cancelText: '取消',
-      onOk: () => {
-        const updated = initializeClassificationTemplate(template.id);
+      onOk: async () => {
+        const updated = await initializeClassificationTemplate(template.id);
         if (!updated) {
           messageApi.error('初始化失败，请刷新后重试');
           return;
@@ -553,7 +554,7 @@ const TemplateDetail: React.FC = () => {
     setCategoryInlineEditor(null);
   };
 
-  const handleSubmitCategoryInlineEditor = () => {
+  const handleSubmitCategoryInlineEditor = async () => {
     if (!template) {
       return;
     }
@@ -572,13 +573,13 @@ const TemplateDetail: React.FC = () => {
     let updatedTemplate: ClassificationTemplateRecord | null = null;
 
     if (categoryInlineEditor?.mode === 'edit') {
-      updatedTemplate = updateClassificationCategory(template.id, categoryInlineEditor.categoryId, {
+      updatedTemplate = await updateClassificationCategory(template.id, categoryInlineEditor.categoryId, {
         name: categoryName,
       });
     } else if (categoryInlineEditor?.mode === 'create-child') {
-      updatedTemplate = addClassificationCategory(template.id, { name: categoryName }, categoryInlineEditor.parentId);
+      updatedTemplate = await addClassificationCategory(template.id, { name: categoryName }, categoryInlineEditor.parentId);
     } else if (categoryInlineEditor?.mode === 'create-root') {
-      updatedTemplate = addClassificationCategory(template.id, { name: categoryName }, null);
+      updatedTemplate = await addClassificationCategory(template.id, { name: categoryName }, null);
     }
 
     if (!updatedTemplate) {
@@ -613,8 +614,8 @@ const TemplateDetail: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const updated = deleteClassificationCategory(template.id, category.id);
+      onOk: async () => {
+        const updated = await deleteClassificationCategory(template.id, category.id);
         if (!updated) {
           messageApi.error('删除分类失败，请刷新后重试');
           return;
@@ -633,10 +634,11 @@ const TemplateDetail: React.FC = () => {
 
     const values = await dataTypeForm.validateFields();
 
-    const updated =
+    const updated = await (
       dataTypeModalMode === 'edit' && editingDataType
         ? updateClassificationDataType(template.id, editingDataType.id, values)
-        : addClassificationDataType(template.id, selectedCategory.id, values);
+        : addClassificationDataType(template.id, selectedCategory.id, values)
+    );
 
     if (!updated) {
       messageApi.error('数据类型保存失败，请重试');
@@ -664,8 +666,8 @@ const TemplateDetail: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const updated = deleteClassificationDataType(template.id, dataType.id);
+      onOk: async () => {
+        const updated = await deleteClassificationDataType(template.id, dataType.id);
         if (!updated) {
           messageApi.error('删除数据类型失败，请重试');
           return;

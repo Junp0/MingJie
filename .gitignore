@@ -1,0 +1,39 @@
+# Dependencies
+**/node_modules
+
+# Build output
+**/dist
+**/build
+
+# Tools
+.tools/
+
+# Artifacts
+.artifacts/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Umi
+**/.umi
+**/.umi-production
+**/.umi-test
+
+# Misc
+*.bak
+.temp/
+coverage/
