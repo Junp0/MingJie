@@ -148,15 +148,20 @@ model ImportTask {
   port                 Int
   databaseName         String?
   sourceUsername       String?
+  sourcePassword       String?
   assetGroupId         String
   dataAssetId          String?
   classificationTaskId String?
   creatorId            String?
+  scheduleMode         String           @default("single")
+  executeAt            DateTime?
   status               ImportTaskStatus @default(PENDING)
   progress             Int              @default(0)
   importedTableCount   Int              @default(0)
   importedFieldCount   Int              @default(0)
   importedRecordCount  Int              @default(0)
+  runClassificationImmediatelyAfterImport Boolean @default(false)
+  classificationTriggeredAt DateTime?
   errorMessage         String?
   description          String?
   createdAt            DateTime         @default(now())

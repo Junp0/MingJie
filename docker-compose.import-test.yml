@@ -17,6 +17,7 @@ services:
       - import_mysql_3308_data:/var/lib/mysql
       - ./scripts/mysql3308-entrypoint-init.sh:/docker-entrypoint-initdb.d/01-mysql3308-entrypoint-init.sh:ro
       - ./scripts/mysql3308-import-demo.sql:/docker-entrypoint-initdb.d/10-mysql3308-import-demo.sql:ro
+      - ./scripts/mysql3308-protection-feature-demo.sql:/docker-entrypoint-initdb.d/11-mysql3308-protection-feature-demo.sql:ro
     healthcheck:
       test:
         - CMD-SHELL

@@ -1,7 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ImportTaskStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreateImportTaskDto {
   @ApiProperty({ example: '用户中心主库' })
@@ -70,4 +77,24 @@ export class CreateImportTaskDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional({ example: 'daily', default: 'single' })
+  @IsOptional()
+  @IsString()
+  scheduleMode?: string;
+
+  @ApiPropertyOptional({ example: '2026-03-30 18:00:00' })
+  @IsOptional()
+  @IsString()
+  executeAt?: string | null;
+
+  @ApiPropertyOptional({ default: true })
+  @IsOptional()
+  @IsBoolean()
+  runImmediately?: boolean;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  runClassificationImmediatelyAfterImport?: boolean;
 }

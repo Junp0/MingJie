@@ -5,6 +5,7 @@
 用于手工导入测试的建库脚本已经在仓库里：
 
 - 主数据脚本：`scripts/mysql3308-import-demo.sql`
+- 脱敏/加密验证脚本：`scripts/mysql3308-protection-feature-demo.sql`
 - 独立实例编排：`docker-compose.import-test.yml`
 - 初始化入口脚本：`scripts/mysql3308-entrypoint-init.sh`
 

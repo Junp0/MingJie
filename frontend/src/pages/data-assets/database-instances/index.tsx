@@ -148,8 +148,14 @@ const DataAssetImport: React.FC = () => {
               size="small"
               style={{ padding: 0, margin: 0 }}
               onClick={async () => {
-                await updateImportTaskStatus(record.id, "running");
-                messageApi.success(`已启动：${record.sourceName}`);
+                const updated = await updateImportTaskStatus(record.id, "running");
+                messageApi.success(
+                  updated?.status === "completed"
+                    ? updated.classificationTriggeredAt
+                      ? `导入已完成，并已触发关联分类分级任务`
+                      : `导入已完成：${record.sourceName}`
+                    : `已启动：${record.sourceName}`
+                );
                 actionRef.current?.reload();
               }}
             >
@@ -166,10 +172,8 @@ const DataAssetImport: React.FC = () => {
                   record.id,
                   "completed"
                 );
-                if (updated?.classificationTaskId) {
-                  messageApi.success(
-                    `导入已完成，并已自动启动关联分类分级任务`
-                  );
+                if (updated?.classificationTriggeredAt) {
+                  messageApi.success(`导入已完成，并已触发关联分类分级任务`);
                 } else {
                   messageApi.success(`导入已完成：${record.sourceName}`);
                 }

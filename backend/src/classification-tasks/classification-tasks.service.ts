@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   ClassificationTaskSource,
   ClassificationTaskStatus,
+  DataLevel,
   Prisma,
   TemplateStatus,
 } from '@prisma/client';
@@ -13,14 +14,41 @@ import { UpdateClassificationTaskDto } from './dto/update-classification-task.dt
 export class ClassificationTasksService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalizeAssetIds(dataAssetIds?: string[] | null) {
+  private normalizeAssetIds(dataAssetIds?: unknown) {
+    if (!Array.isArray(dataAssetIds)) {
+      return [];
+    }
+
     return Array.from(
       new Set(
-        (dataAssetIds ?? [])
-          .map((item) => item?.trim())
+        dataAssetIds
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
           .filter((item): item is string => Boolean(item)),
       ),
     );
+  }
+
+  private dataLevelWeight(level?: DataLevel | null) {
+    if (!level) return 0;
+    if (level === DataLevel.SECRET) return 4;
+    if (level === DataLevel.CONFIDENTIAL) return 3;
+    if (level === DataLevel.INTERNAL) return 2;
+    return 1;
+  }
+
+  private mapLevelCodeToDataLevel(
+    code?: string | null,
+    isSensitive?: boolean,
+    needEncrypt?: boolean,
+  ) {
+    if (code === 'L1') return DataLevel.PUBLIC;
+    if (code === 'L2') return DataLevel.INTERNAL;
+    if (code === 'L3') return DataLevel.CONFIDENTIAL;
+    if (code === 'L4' || code === 'L5') return DataLevel.SECRET;
+    if (needEncrypt) return DataLevel.SECRET;
+    if (isSensitive) return DataLevel.CONFIDENTIAL;
+    return DataLevel.INTERNAL;
   }
 
   private parseExecuteAt(value?: string | null) {
@@ -38,6 +66,153 @@ export class ClassificationTasksService {
     }
 
     return parsed;
+  }
+
+  private matchRuleValue(value: string, matcher: string, expected: string) {
+    const normalizedValue = value.toLowerCase();
+    const normalizedExpected = expected.toLowerCase();
+
+    switch (matcher) {
+      case 'equals':
+        return normalizedValue === normalizedExpected;
+      case 'contains':
+        return normalizedExpected
+          .split(',')
+          .map((item) => item.trim())
+          .some((item) => item && normalizedValue.includes(item));
+      case 'prefix':
+        return normalizedValue.startsWith(normalizedExpected);
+      case 'suffix':
+        return normalizedValue.endsWith(normalizedExpected);
+      case 'regex':
+        try {
+          return new RegExp(expected, 'i').test(value);
+        } catch {
+          return false;
+        }
+      case 'enumContains':
+        return normalizedExpected
+          .split(',')
+          .map((item) => item.trim())
+          .some((item) => item && normalizedValue.includes(item));
+      default:
+        return false;
+    }
+  }
+
+  private async loadTemplateDataTypes(templateId?: string | null) {
+    const template =
+      (templateId
+        ? await this.prisma.classificationTemplate.findUnique({
+            where: { id: templateId },
+            include: {
+              dataTypes: {
+                include: {
+                  category: true,
+                  levelDefinition: true,
+                  rules: true,
+                },
+              },
+            },
+          })
+        : null) ??
+      (await this.prisma.classificationTemplate.findFirst({
+        where: { status: TemplateStatus.ACTIVE },
+        include: {
+          dataTypes: {
+            include: {
+              category: true,
+              levelDefinition: true,
+              rules: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      })) ??
+      (await this.prisma.classificationTemplate.findFirst({
+        include: {
+          dataTypes: {
+            include: {
+              category: true,
+              levelDefinition: true,
+              rules: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }));
+
+    return template?.dataTypes ?? [];
+  }
+
+  private classifyColumn(
+    column: {
+      id: string;
+      columnName: string;
+      columnComment: string | null;
+      dataType: string;
+      columnType: string;
+    },
+    table: {
+      id: string;
+      tableName: string;
+      tableComment: string | null;
+    },
+    dataTypes: Awaited<
+      ReturnType<ClassificationTasksService['loadTemplateDataTypes']>
+    >,
+  ) {
+    const candidates = dataTypes
+      .map((dataType) => {
+        const score = dataType.rules.reduce((total, rule) => {
+          const currentValue =
+            rule.target === 'fieldComment'
+              ? (column.columnComment ?? '')
+              : rule.target === 'fieldType'
+                ? column.columnType
+                : rule.target === 'tableName'
+                  ? table.tableName
+                  : rule.target === 'tableComment'
+                    ? (table.tableComment ?? '')
+                    : column.columnName;
+
+          return this.matchRuleValue(currentValue, rule.matcher, rule.value)
+            ? total + Number(rule.hitRate)
+            : total;
+        }, 0);
+
+        return {
+          dataType,
+          score,
+        };
+      })
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score);
+
+    const matched = candidates[0]?.dataType;
+    if (!matched) {
+      return {
+        classificationDataTypeId: null,
+        dataCategory: '未分类',
+        dataLevel: null,
+        isSensitive: false,
+        needMask: false,
+        needEncrypt: false,
+      };
+    }
+
+    return {
+      classificationDataTypeId: matched.id,
+      dataCategory: matched.category?.name ?? '未分类',
+      dataLevel: this.mapLevelCodeToDataLevel(
+        matched.levelDefinition?.code,
+        matched.isSensitive,
+        matched.needEncrypt,
+      ),
+      isSensitive: matched.isSensitive,
+      needMask: matched.needMask,
+      needEncrypt: matched.needEncrypt,
+    };
   }
 
   private async resolveDataSource(
@@ -168,6 +343,94 @@ export class ClassificationTasksService {
       data: await this.buildCreateData(dto),
       include: { template: true, creator: true },
     });
+  }
+
+  async executeNow(id: string) {
+    const task = await this.prisma.classificationTask.findUnique({
+      where: { id },
+      include: { template: true, creator: true },
+    });
+    if (!task) {
+      return null;
+    }
+
+    await this.prisma.classificationTask.update({
+      where: { id },
+      data: { status: ClassificationTaskStatus.RUNNING },
+    });
+
+    try {
+      const dataAssetIds = this.normalizeAssetIds(task.dataAssetIds);
+      const dataTypes = await this.loadTemplateDataTypes(task.templateId);
+      const nextDataSource = await this.resolveDataSource(
+        dataAssetIds,
+        task.dataSource,
+      );
+
+      for (const assetId of dataAssetIds) {
+        const asset = await this.prisma.dataAsset.findUnique({
+          where: { id: assetId },
+          include: {
+            tables: {
+              include: {
+                columns: true,
+              },
+            },
+          },
+        });
+
+        if (!asset) {
+          continue;
+        }
+
+        let highestLevel: DataLevel | null = null;
+
+        for (const table of asset.tables) {
+          for (const column of table.columns) {
+            const classification = this.classifyColumn(column, table, dataTypes);
+
+            if (this.dataLevelWeight(classification.dataLevel) > this.dataLevelWeight(highestLevel)) {
+              highestLevel = classification.dataLevel;
+            }
+
+            await this.prisma.dataAssetColumn.update({
+              where: { id: column.id },
+              data: {
+                classificationDataTypeId: classification.classificationDataTypeId,
+                dataCategory: classification.dataCategory,
+                dataLevel: classification.dataLevel,
+                isSensitive: classification.isSensitive,
+                needMask: classification.needMask,
+                needEncrypt: classification.needEncrypt,
+              },
+            });
+          }
+        }
+
+        await this.prisma.dataAsset.update({
+          where: { id: assetId },
+          data: {
+            dataLevel:
+              highestLevel ?? asset.dataLevel,
+          },
+        });
+      }
+
+      return this.prisma.classificationTask.update({
+        where: { id },
+        data: {
+          dataSource: nextDataSource,
+          status: ClassificationTaskStatus.COMPLETED,
+        },
+        include: { template: true, creator: true },
+      });
+    } catch (error) {
+      await this.prisma.classificationTask.update({
+        where: { id },
+        data: { status: ClassificationTaskStatus.FAILED },
+      });
+      throw error;
+    }
   }
 
   async update(id: string, dto: UpdateClassificationTaskDto) {

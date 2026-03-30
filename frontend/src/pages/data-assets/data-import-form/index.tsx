@@ -29,6 +29,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Descriptions,
@@ -55,7 +56,9 @@ interface ImportWorkflowFormValues
   extends Omit<DataAssetImportFormValues, "executeAt" | "description"> {
   executeAt?: dayjs.Dayjs;
   description?: string;
+  runImportImmediately: boolean;
   createClassificationTask: boolean;
+  runClassificationImmediatelyAfterImport: boolean;
   classificationTaskMode?: "existing" | "new";
   existingClassificationTaskId?: string;
   classificationTaskName?: string;
@@ -462,6 +465,10 @@ const DataImportForm: React.FC = () => {
         },
         {
           creator: "当前用户",
+          runImmediately: values.runImportImmediately,
+          runClassificationImmediatelyAfterImport:
+            values.createClassificationTask &&
+            values.runClassificationImmediatelyAfterImport,
         }
       );
 
@@ -585,7 +592,9 @@ const DataImportForm: React.FC = () => {
             databaseType: "MySQL",
             port: 3306,
             scheduleMode: "daily",
+            runImportImmediately: true,
             createClassificationTask: true,
+            runClassificationImmediatelyAfterImport: true,
             classificationTaskMode: "new",
           }}
         >
@@ -769,6 +778,19 @@ const DataImportForm: React.FC = () => {
                   showCount
                 />
               </Form.Item>
+
+              <Form.Item
+                name="runImportImmediately"
+                valuePropName="checked"
+                style={{ marginBottom: 0 }}
+              >
+                <Checkbox>
+                  任务创建成功后立即执行一次导入任务
+                </Checkbox>
+              </Form.Item>
+              <Text type="secondary">
+                取消勾选后，本次仅保存导入任务与执行时间配置，不会在提交后立刻启动导入。
+              </Text>
             </Card>
           </div>
 
@@ -850,9 +872,22 @@ const DataImportForm: React.FC = () => {
               {createClassificationTaskSwitch ? (
                 <Card title="分类分级任务参数">
                   <Form.Item
+                    name="runClassificationImmediatelyAfterImport"
+                    valuePropName="checked"
+                    style={{ marginBottom: 20 }}
+                  >
+                    <Checkbox>
+                      数据资产导入成功后立即执行一次数据分类分级任务
+                    </Checkbox>
+                  </Form.Item>
+                  <Text type="secondary">
+                    取消勾选后，仅保留分类分级任务的执行时间配置，不会在本次导入完成后立即触发。
+                  </Text>
+
+                  <Form.Item
                     label="关联方式"
                     name="classificationTaskMode"
-                    style={{ marginBottom: 20 }}
+                    style={{ marginBottom: 20, marginTop: 20 }}
                   >
                     <Radio.Group
                       optionType="button"

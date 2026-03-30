@@ -787,13 +787,6 @@ const DataAssetList: React.FC = () => {
   const columns = useMemo<ProColumns<DataAssetRecord>[]>(
     () => [
       {
-        title: 'ID',
-        dataIndex: 'id',
-        width: 120,
-        search: false,
-        align: 'center',
-      },
-      {
         title: '数据资产名称',
         dataIndex: 'name',
         valueType: 'text',

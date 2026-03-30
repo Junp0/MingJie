@@ -39,7 +39,6 @@ const MissedDataList: React.FC = () => {
   };
 
   const columns: ProColumns<MissedDataItem>[] = [
-    { title: 'ID', dataIndex: 'id', width: 80, search: false, align: 'center' },
     { title: '字段名称', dataIndex: 'fieldName', valueType: 'text', align: 'center' },
     { title: '字段注释', dataIndex: 'fieldComment', valueType: 'text', align: 'center' },
     { title: '字段库表', dataIndex: 'fieldTable', valueType: 'text', align: 'center' },

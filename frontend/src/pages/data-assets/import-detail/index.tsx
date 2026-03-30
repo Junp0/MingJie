@@ -196,9 +196,20 @@ const ImportDetail: React.FC = () => {
             key="start"
             type="primary"
             onClick={async () => {
-              await updateImportTaskStatus(importTask.id, "running");
+              const updated = await updateImportTaskStatus(
+                importTask.id,
+                "running"
+              );
               setRefreshSeed((current) => current + 1);
-              messageApi.success("导入任务已启动");
+              if (updated?.status === "completed") {
+                messageApi.success(
+                  updated.classificationTriggeredAt
+                    ? "导入已完成，并已触发关联分类分级任务"
+                    : "导入任务已完成"
+                );
+              } else {
+                messageApi.success("导入任务已启动");
+              }
             }}
           >
             启动导入
@@ -214,8 +225,8 @@ const ImportDetail: React.FC = () => {
                 "completed"
               );
               setRefreshSeed((current) => current + 1);
-              if (updated?.classificationTaskId) {
-                messageApi.success("导入已完成，并已自动启动关联分类分级任务");
+              if (updated?.classificationTriggeredAt) {
+                messageApi.success("导入已完成，并已触发关联分类分级任务");
               } else {
                 messageApi.success("导入任务已完成");
               }

@@ -13,3 +13,6 @@ SQL
 
 mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" "${MYSQL_DATABASE}" \
   < /docker-entrypoint-initdb.d/10-mysql3308-import-demo.sql
+
+mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" "${MYSQL_DATABASE}" \
+  < /docker-entrypoint-initdb.d/11-mysql3308-protection-feature-demo.sql

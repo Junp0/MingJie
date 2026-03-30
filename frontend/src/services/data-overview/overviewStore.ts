@@ -1,20 +1,29 @@
 import { request } from '@/services/request';
 
 export type OverviewDataLevel = 'public' | 'internal' | 'confidential' | 'secret';
+export type OverviewLevelCode = 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
 export type ProtectionStatus = 'not_required' | 'recommended' | 'confirmed';
 
 export interface FullDataItem {
   id: string;
+  databaseName: string;
+  tableName: string;
   fieldName: string;
   fieldComment: string;
   fieldTable: string;
   dataType: string;
   dataCategory: string;
-  dataLevel: OverviewDataLevel;
+  dataTypeName: string;
+  classificationPathNames: string[];
+  dataLevel: OverviewDataLevel | null;
+  levelCode: OverviewLevelCode | null;
+  levelColor?: string | null;
   isSensitive: boolean;
   maskingStatus: ProtectionStatus;
   encryptionStatus: ProtectionStatus;
   groupName: string;
+  rootGroupName: string;
+  assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
   status: 'active' | 'inactive' | 'processing';
@@ -34,13 +43,20 @@ export interface TableFieldItem {
   id: string;
   fieldName: string;
   fieldComment: string;
+  fieldTable: string;
   dataType: string;
   dataCategory: string;
-  dataLevel: OverviewDataLevel;
+  dataTypeName: string;
+  classificationPathNames: string[];
+  dataLevel: OverviewDataLevel | null;
+  levelCode: OverviewLevelCode | null;
+  levelColor?: string | null;
   isSensitive: boolean;
   maskingStatus: ProtectionStatus;
   encryptionStatus: ProtectionStatus;
   groupName: string;
+  rootGroupName: string;
+  assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
 }

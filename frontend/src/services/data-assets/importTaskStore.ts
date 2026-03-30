@@ -39,6 +39,7 @@ export interface DataAssetImportRecord {
   importedTableCount: number;
   importedFieldCount: number;
   importedRecordCount: number;
+  classificationTriggeredAt?: string;
   errorMessage?: string;
   creator: string;
 }
@@ -75,6 +76,9 @@ type BackendImportTask = {
   port: number;
   databaseName?: string | null;
   sourceUsername?: string | null;
+  scheduleMode?: string | null;
+  executeAt?: string | null;
+  classificationTriggeredAt?: string | null;
   status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
   progress: number;
   importedTableCount?: number;
@@ -135,45 +139,60 @@ const buildScheduleLabel = (
   }
 };
 
-const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => ({
-  id: item.id,
-  sourceType: "database",
-  sourceName: item.sourceName,
-  databaseType: item.sourceType?.toUpperCase?.() || "DATABASE",
-  databaseName: item.databaseName ?? item.sourceName,
-  sourceConfig: `${item.sourceType}://${item.ipAddress}:${item.port}`,
-  ipAddress: item.ipAddress,
-  port: item.port,
-  username: item.sourceUsername ?? item.creator?.name ?? "app",
-  password: "******",
-  status: statusMap[item.status],
-  progress: item.progress,
-  assetGroupId: item.assetGroupId,
-  assetGroupName: item.assetGroup?.name ?? "",
-  createTime: formatDateTime(item.createdAt),
-  updateTime: formatDateTime(item.updatedAt),
-  startTime:
-    item.status === "RUNNING" || item.status === "SUCCESS"
-      ? formatDateTime(item.createdAt)
-      : "",
-  endTime:
-    item.status === "SUCCESS" || item.status === "FAILED"
-      ? formatDateTime(item.updatedAt)
-      : "",
-  lastSyncTime: item.status === "SUCCESS" ? formatDateTime(item.updatedAt) : "",
-  scheduleMode: "single",
-  scheduleLabel: buildScheduleLabel("single", formatDateTime(item.createdAt)),
-  executeAt: formatDateTime(item.createdAt),
-  description: item.description ?? "",
-  classificationTaskEnabled: Boolean(item.classificationTask?.id),
-  classificationTaskId: item.classificationTask?.id ?? undefined,
-  dataAssetId: item.dataAsset?.id ?? undefined,
-  importedTableCount: item.importedTableCount ?? 0,
-  importedFieldCount: item.importedFieldCount ?? 0,
-  importedRecordCount: item.importedRecordCount ?? 0,
-  errorMessage: item.errorMessage ?? undefined,
-  creator: item.creator?.name ?? "当前用户",
-});
+const normalizeScheduleMode = (value?: string | null): ImportScheduleMode => {
+  if (value === "daily" || value === "weekly" || value === "monthly") {
+    return value;
+  }
+  return "single";
+};
+
+const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
+  const scheduleMode = normalizeScheduleMode(item.scheduleMode);
+  const executeAt = formatDateTime(item.executeAt ?? undefined);
+
+  return {
+    id: item.id,
+    sourceType: "database",
+    sourceName: item.sourceName,
+    databaseType: item.sourceType?.toUpperCase?.() || "DATABASE",
+    databaseName: item.databaseName ?? item.sourceName,
+    sourceConfig: `${item.sourceType}://${item.ipAddress}:${item.port}`,
+    ipAddress: item.ipAddress,
+    port: item.port,
+    username: item.sourceUsername ?? item.creator?.name ?? "app",
+    password: "******",
+    status: statusMap[item.status],
+    progress: item.progress,
+    assetGroupId: item.assetGroupId,
+    assetGroupName: item.assetGroup?.name ?? "",
+    createTime: formatDateTime(item.createdAt),
+    updateTime: formatDateTime(item.updatedAt),
+    startTime:
+      item.status === "RUNNING" || item.status === "SUCCESS"
+        ? formatDateTime(item.createdAt)
+        : "",
+    endTime:
+      item.status === "SUCCESS" || item.status === "FAILED"
+        ? formatDateTime(item.updatedAt)
+        : "",
+    lastSyncTime:
+      item.status === "SUCCESS" ? formatDateTime(item.updatedAt) : "",
+    scheduleMode,
+    scheduleLabel: buildScheduleLabel(scheduleMode, executeAt),
+    executeAt,
+    description: item.description ?? "",
+    classificationTaskEnabled: Boolean(item.classificationTask?.id),
+    classificationTaskId: item.classificationTask?.id ?? undefined,
+    dataAssetId: item.dataAsset?.id ?? undefined,
+    importedTableCount: item.importedTableCount ?? 0,
+    importedFieldCount: item.importedFieldCount ?? 0,
+    importedRecordCount: item.importedRecordCount ?? 0,
+    classificationTriggeredAt:
+      formatDateTime(item.classificationTriggeredAt ?? undefined) || undefined,
+    errorMessage: item.errorMessage ?? undefined,
+    creator: item.creator?.name ?? "当前用户",
+  };
+};
 
 export const listImportTasks = async (): Promise<DataAssetImportRecord[]> => {
   const data = await request<BackendImportTask[]>("/api/import-tasks");
@@ -191,7 +210,12 @@ export const getImportTaskById = async (
 
 export const createImportTask = async (
   values: DataAssetImportFormValues,
-  options?: { classificationTaskId?: string; creator?: string }
+  options?: {
+    classificationTaskId?: string;
+    creator?: string;
+    runImmediately?: boolean;
+    runClassificationImmediatelyAfterImport?: boolean;
+  }
 ): Promise<DataAssetImportRecord> => {
   const data = await request<BackendImportTask>("/api/import-tasks", {
     method: "POST",
@@ -204,9 +228,14 @@ export const createImportTask = async (
       sourceUsername: values.username.trim(),
       sourcePassword: values.password,
       assetGroupId: values.assetGroupId,
+      scheduleMode: values.scheduleMode,
+      executeAt: values.executeAt ?? null,
       description: values.description?.trim() ?? "",
       progress: 0,
       status: "PENDING",
+      runImmediately: options?.runImmediately ?? true,
+      runClassificationImmediatelyAfterImport:
+        options?.runClassificationImmediatelyAfterImport ?? false,
     },
   });
 

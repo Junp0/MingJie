@@ -1,21 +1,20 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { useLocation } from '@umijs/max';
-import { Button, Card, Empty, List, Space, Tag, Tree, Typography, message } from 'antd';
+import { Button, Card, Drawer, Empty, List, Space, Table, Tag, Tree, Typography, message } from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listDatabaseInstances,
-  type OverviewDataLevel as DataAssetLevel,
-  type ProtectionStatus,
 } from '@/services/data-overview/overviewStore';
+import {
+  buildSampleDataItems,
+  createFieldDisplayColumns,
+  sampleColumns,
+  type OverviewFieldDisplayRecord,
+  type SampleDataItem,
+} from '../shared/fieldDisplay';
 
 const { Text } = Typography;
-
-const protectionStatusMap: Record<ProtectionStatus, { color: string; text: string }> = {
-  not_required: { color: 'default', text: '无需' },
-  recommended: { color: 'orange', text: '建议' },
-  confirmed: { color: 'green', text: '确认' },
-};
 
 interface DatabaseInstance {
   ip: string;
@@ -49,13 +48,19 @@ interface FieldItem {
   id: string;
   fieldName: string;
   fieldComment: string;
+  fieldTable: string;
   dataType: string;
-  dataCategory: string;
-  dataLevel: DataAssetLevel;
+  dataCategory: OverviewFieldDisplayRecord['dataCategory'];
+  dataTypeName: string;
+  classificationPathNames: string[];
+  dataLevel: OverviewFieldDisplayRecord['dataLevel'];
+  levelCode: OverviewFieldDisplayRecord['levelCode'];
   isSensitive: boolean;
-  maskingStatus: ProtectionStatus;
-  encryptionStatus: ProtectionStatus;
+  maskingStatus: OverviewFieldDisplayRecord['maskingStatus'];
+  encryptionStatus: OverviewFieldDisplayRecord['encryptionStatus'];
   groupName: string;
+  rootGroupName: string;
+  assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
 }
@@ -69,6 +74,7 @@ interface FieldListItem extends FieldItem {
   databaseName: string;
   tableName: string;
   instanceIp: string;
+  fieldTable: string;
 }
 
 const FIELD_TEMPLATES = [
@@ -90,6 +96,9 @@ const TableDataList: React.FC = () => {
   const [selectedDatabaseId, setSelectedDatabaseId] = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<TableListItem | null>(null);
   const [databaseInstances, setDatabaseInstances] = useState<DatabaseInstance[]>([]);
+  const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
+  const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
+  const [currentFieldName, setCurrentFieldName] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -120,134 +129,13 @@ const TableDataList: React.FC = () => {
     return new Map(entries);
   }, [databaseInstances]);
 
-  const fieldColumns: ProColumns<FieldListItem>[] = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      width: 140,
-      search: false,
-      align: 'center',
-    },
-    {
-      title: '所属数据库',
-      dataIndex: 'databaseName',
-      align: 'center',
-      valueType: 'text',
-    },
-    {
-      title: '所属表',
-      dataIndex: 'tableName',
-      align: 'center',
-      valueType: 'text',
-    },
-    {
-      title: '字段名称',
-      dataIndex: 'fieldName',
-      align: 'center',
-      valueType: 'text',
-    },
-    {
-      title: '字段注释',
-      dataIndex: 'fieldComment',
-      align: 'center',
-      valueType: 'text',
-    },
-    {
-      title: '数据类型',
-      dataIndex: 'dataType',
-      align: 'center',
-      valueType: 'select',
-      valueEnum: {
-        BIGINT: { text: 'BIGINT' },
-        'VARCHAR(20)': { text: 'VARCHAR(20)' },
-        'VARCHAR(32)': { text: 'VARCHAR(32)' },
-        'VARCHAR(100)': { text: 'VARCHAR(100)' },
-        'VARCHAR(255)': { text: 'VARCHAR(255)' },
-        'DECIMAL(10,2)': { text: 'DECIMAL(10,2)' },
-        DATETIME: { text: 'DATETIME' },
-      },
-    },
-    {
-      title: '数据分类',
-      dataIndex: 'dataCategory',
-      align: 'center',
-      valueType: 'select',
-      valueEnum: {
-        标识信息: { text: '标识信息' },
-        个人信息: { text: '个人信息' },
-        联系方式: { text: '联系方式' },
-        财务信息: { text: '财务信息' },
-        商品信息: { text: '商品信息' },
-      },
-    },
-    {
-      title: '数据分级',
-      dataIndex: 'dataLevel',
-      align: 'center',
-      valueType: 'select',
-      valueEnum: {
-        public: { text: '公开', status: 'Success' },
-        internal: { text: '内部', status: 'Warning' },
-        confidential: { text: '机密', status: 'Error' },
-        secret: { text: '绝密', status: 'Error' },
-      },
-      render: (_, record) => {
-        const levelMap = {
-          public: { color: 'green', text: '公开' },
-          internal: { color: 'orange', text: '内部' },
-          confidential: { color: 'red', text: '机密' },
-          secret: { color: 'red', text: '绝密' },
-        };
-        const level = levelMap[record.dataLevel];
-        return <Tag color={level.color}>{level.text}</Tag>;
-      },
-    },
-    {
-      title: '是否敏感',
-      dataIndex: 'isSensitive',
-      align: 'center',
-      valueType: 'select',
-      valueEnum: {
-        true: { text: '是', status: 'Error' },
-        false: { text: '否', status: 'Success' },
-      },
-      render: (_, record) => (
-        <Tag color={record.isSensitive ? 'red' : 'green'}>{record.isSensitive ? '是' : '否'}</Tag>
-      ),
-    },
-    {
-      title: '脱敏情况',
-      dataIndex: 'maskingStatus',
-      align: 'center',
-      valueType: 'select',
-      valueEnum: {
-        not_required: { text: '无需脱敏' },
-        recommended: { text: '建议脱敏' },
-        confirmed: { text: '确认脱敏' },
-      },
-      render: (_, record) => (
-        <Tag color={protectionStatusMap[record.maskingStatus].color}>
-          {protectionStatusMap[record.maskingStatus].text}脱敏
-        </Tag>
-      ),
-    },
-    {
-      title: '加密情况',
-      dataIndex: 'encryptionStatus',
-      align: 'center',
-      valueType: 'select',
-      valueEnum: {
-        not_required: { text: '无需加密' },
-        recommended: { text: '建议加密' },
-        confirmed: { text: '确认加密' },
-      },
-      render: (_, record) => (
-        <Tag color={protectionStatusMap[record.encryptionStatus].color}>
-          {protectionStatusMap[record.encryptionStatus].text}加密
-        </Tag>
-      ),
-    },
-  ];
+  const showSampleData = (record: FieldListItem) => {
+    setCurrentSampleData(buildSampleDataItems(record.sampleData, record.updateTime));
+    setCurrentFieldName(record.fieldName);
+    setSampleDrawerVisible(true);
+  };
+
+  const fieldColumns: ProColumns<FieldListItem>[] = createFieldDisplayColumns(showSampleData);
 
   const handleTableSelect = (table: TableListItem | null) => {
     setSelectedTable(table);
@@ -320,6 +208,7 @@ const TableDataList: React.FC = () => {
         databaseName: selectedTable.databaseName,
         tableName: selectedTable.name,
         instanceIp: selectedTable.instanceIp,
+        fieldTable: selectedTable.name,
       }));
     }
 
@@ -334,6 +223,7 @@ const TableDataList: React.FC = () => {
           databaseName: currentDatabase.name,
           tableName: table.name,
           instanceIp: currentInstance.ip,
+          fieldTable: table.name,
         })),
       );
     }
@@ -345,6 +235,7 @@ const TableDataList: React.FC = () => {
           databaseName: database.name,
           tableName: table.name,
           instanceIp: currentInstance.ip,
+          fieldTable: table.name,
         })),
       ),
     );
@@ -550,12 +441,12 @@ const TableDataList: React.FC = () => {
                   fieldName,
                   fieldComment,
                   dataType,
-                  dataCategory,
+                  dataTypeName,
                   dataLevel,
                   isSensitive,
                   maskingStatus,
                   encryptionStatus,
-                  groupName,
+                  rootGroupName,
                 } = params as Record<string, any>;
 
                 let filteredData = currentFields;
@@ -583,8 +474,10 @@ const TableDataList: React.FC = () => {
                 if (dataType) {
                   filteredData = filteredData.filter((item) => item.dataType === dataType);
                 }
-                if (dataCategory) {
-                  filteredData = filteredData.filter((item) => item.dataCategory === dataCategory);
+                if (dataTypeName) {
+                  filteredData = filteredData.filter((item) =>
+                    item.dataTypeName.includes(String(dataTypeName)),
+                  );
                 }
                 if (dataLevel) {
                   filteredData = filteredData.filter((item) => item.dataLevel === dataLevel);
@@ -604,8 +497,10 @@ const TableDataList: React.FC = () => {
                     (item) => item.encryptionStatus === encryptionStatus,
                   );
                 }
-                if (groupName) {
-                  filteredData = filteredData.filter((item) => item.groupName === groupName);
+                if (rootGroupName) {
+                  filteredData = filteredData.filter((item) =>
+                    item.rootGroupName.includes(String(rootGroupName)),
+                  );
                 }
 
                 return {
@@ -615,6 +510,12 @@ const TableDataList: React.FC = () => {
                 };
               }}
               columns={fieldColumns}
+              columnsState={{
+                defaultValue: {
+                  databaseName: { show: false },
+                  tableName: { show: false },
+                },
+              }}
               pagination={{
                 defaultPageSize: 10,
                 showSizeChanger: true,
@@ -630,6 +531,16 @@ const TableDataList: React.FC = () => {
           )}
         </Card>
       </div>
+
+      <Drawer
+        title={`${currentFieldName} - 样本数据`}
+        placement="right"
+        width={600}
+        onClose={() => setSampleDrawerVisible(false)}
+        open={sampleDrawerVisible}
+      >
+        <Table columns={sampleColumns} dataSource={currentSampleData} pagination={false} size="small" />
+      </Drawer>
     </PageContainer>
   );
 };

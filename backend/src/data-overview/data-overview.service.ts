@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 type OverviewDataLevel = 'public' | 'internal' | 'confidential' | 'secret';
+type OverviewLevelCode = 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
 type ProtectionStatus = 'not_required' | 'recommended' | 'confirmed';
 type FeatureMatcherConfig = {
   matcher: string;
@@ -15,18 +16,38 @@ type FeatureMatcherConfig = {
   hitRate: number;
 };
 
+type PathNode = {
+  id: string;
+  name: string;
+  parentId: string | null;
+};
+
+type OverviewReferenceData = {
+  assetGroupMap: Map<string, PathNode>;
+  classificationCategoryMap: Map<string, PathNode>;
+  levelColorMap: Map<OverviewLevelCode, string>;
+};
+
 export interface OverviewFieldRecord {
   id: string;
+  databaseName: string;
+  tableName: string;
   fieldName: string;
   fieldComment: string;
   fieldTable: string;
   dataType: string;
   dataCategory: string;
-  dataLevel: OverviewDataLevel;
+  dataTypeName: string;
+  classificationPathNames: string[];
+  dataLevel: OverviewDataLevel | null;
+  levelCode: OverviewLevelCode | null;
+  levelColor?: string | null;
   isSensitive: boolean;
   maskingStatus: ProtectionStatus;
   encryptionStatus: ProtectionStatus;
   groupName: string;
+  rootGroupName: string;
+  assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
   status: 'active' | 'inactive' | 'processing';
@@ -46,13 +67,20 @@ export interface TableFieldRecord {
   id: string;
   fieldName: string;
   fieldComment: string;
+  fieldTable: string;
   dataType: string;
   dataCategory: string;
-  dataLevel: OverviewDataLevel;
+  dataTypeName: string;
+  classificationPathNames: string[];
+  dataLevel: OverviewDataLevel | null;
+  levelCode: OverviewLevelCode | null;
+  levelColor?: string | null;
   isSensitive: boolean;
   maskingStatus: ProtectionStatus;
   encryptionStatus: ProtectionStatus;
   groupName: string;
+  rootGroupName: string;
+  assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
 }
@@ -89,16 +117,183 @@ export interface DatabaseInstanceRecord {
 export class DataOverviewService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private mapPersistedLevel(level?: DataLevel | null): OverviewDataLevel {
+  private mapPersistedLevel(level?: DataLevel | null): OverviewDataLevel | null {
+    if (!level) return null;
     if (level === 'PUBLIC') return 'public';
     if (level === 'CONFIDENTIAL') return 'confidential';
     if (level === 'SECRET') return 'secret';
     return 'internal';
   }
 
+  private mapPersistedLevelCode(
+    level?: DataLevel | null,
+    classificationLevelCode?: string | null,
+  ): OverviewLevelCode | null {
+    if (
+      classificationLevelCode === 'L1' ||
+      classificationLevelCode === 'L2' ||
+      classificationLevelCode === 'L3' ||
+      classificationLevelCode === 'L4' ||
+      classificationLevelCode === 'L5'
+    ) {
+      return classificationLevelCode;
+    }
+
+    if (!level) return null;
+    if (level === 'PUBLIC') return 'L1';
+    if (level === 'CONFIDENTIAL') return 'L3';
+    if (level === 'SECRET') return 'L4';
+    return 'L2';
+  }
+
   private formatDateTime(value?: Date | null) {
     if (!value) return '';
     return value.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+  }
+
+  private createPathMap(items: PathNode[]): Map<string, PathNode> {
+    return new Map(items.map((item) => [item.id, item]));
+  }
+
+  private buildPathNames(
+    nodeId: string | null | undefined,
+    nodeMap: Map<string, PathNode>,
+  ): string[] {
+    if (!nodeId) {
+      return [];
+    }
+
+    const pathNames: string[] = [];
+    let current = nodeMap.get(nodeId) ?? null;
+
+    while (current) {
+      pathNames.unshift(current.name);
+      current = current.parentId ? nodeMap.get(current.parentId) ?? null : null;
+    }
+
+    return pathNames;
+  }
+
+  private buildAssetGroupMeta(
+    assetGroupId: string | null | undefined,
+    fallbackGroupName: string | null | undefined,
+    assetGroupMap: Map<string, PathNode>,
+  ) {
+    const normalizedFallback = fallbackGroupName?.trim() ?? '';
+    const resolvedPath = this.buildPathNames(assetGroupId, assetGroupMap);
+    const assetGroupPathNames = resolvedPath.length
+      ? resolvedPath
+      : normalizedFallback
+        ? [normalizedFallback]
+        : [];
+    const groupName =
+      assetGroupPathNames[assetGroupPathNames.length - 1] || normalizedFallback || '';
+    const rootGroupName = assetGroupPathNames[0] || normalizedFallback || '未分组';
+
+    return {
+      groupName,
+      rootGroupName,
+      assetGroupPathNames,
+    };
+  }
+
+  private buildClassificationMeta(
+    categoryId: string | null | undefined,
+    dataTypeName: string | null | undefined,
+    fallbackCategoryName: string | null | undefined,
+    classificationCategoryMap: Map<string, PathNode>,
+  ) {
+    const normalizedDataTypeName = dataTypeName?.trim() || '';
+    const normalizedCategoryName = fallbackCategoryName?.trim() || '';
+    const displayName = normalizedDataTypeName || normalizedCategoryName || '未分类';
+    const resolvedCategoryPath = this.buildPathNames(
+      categoryId,
+      classificationCategoryMap,
+    );
+    const categoryPathNames = resolvedCategoryPath.length
+      ? resolvedCategoryPath
+      : normalizedCategoryName && normalizedCategoryName !== displayName
+        ? [normalizedCategoryName]
+        : [];
+    const classificationPathNames = [...categoryPathNames, displayName].filter(Boolean);
+
+    return {
+      dataCategory:
+        categoryPathNames[categoryPathNames.length - 1] ||
+        normalizedCategoryName ||
+        displayName,
+      dataTypeName: displayName,
+      classificationPathNames: classificationPathNames.length
+        ? classificationPathNames
+        : [displayName],
+    };
+  }
+
+  private async getOverviewReferenceData(): Promise<OverviewReferenceData> {
+    const [assetGroups, classificationCategories, templates] = await Promise.all([
+      this.prisma.assetGroup.findMany({
+        select: {
+          id: true,
+          name: true,
+          parentId: true,
+        },
+      }),
+      this.prisma.classificationCategory.findMany({
+        select: {
+          id: true,
+          name: true,
+          parentId: true,
+        },
+      }),
+      this.prisma.classificationTemplate.findMany({
+        select: {
+          status: true,
+          createdAt: true,
+          levelDefinitions: {
+            select: {
+              code: true,
+              color: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const activeTemplate =
+      templates.find((item) => item.status === TemplateStatus.ACTIVE) ?? templates[0] ?? null;
+    const levelColorMap = new Map<OverviewLevelCode, string>();
+
+    activeTemplate?.levelDefinitions.forEach((level) => {
+      if (
+        (level.code === 'L1' ||
+          level.code === 'L2' ||
+          level.code === 'L3' ||
+          level.code === 'L4' ||
+          level.code === 'L5') &&
+        /^#[0-9a-fA-F]{6}$/.test(level.color?.trim() ?? '')
+      ) {
+        levelColorMap.set(level.code, level.color!.trim());
+      }
+    });
+
+    return {
+      assetGroupMap: this.createPathMap(
+        assetGroups.map((group) => ({
+          id: group.id,
+          name: group.name,
+          parentId: group.parentId,
+        })),
+      ),
+      classificationCategoryMap: this.createPathMap(
+        classificationCategories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          parentId: category.parentId,
+        })),
+      ),
+      levelColorMap,
+    };
   }
 
   private normalizeAssetName(value: string) {
@@ -143,6 +338,56 @@ export class DataOverviewService {
     if (needEncrypt) return 'secret';
     if (isSensitive) return 'confidential';
     return 'internal';
+  }
+
+  private mapLevelCode(
+    code?: string | null,
+    isSensitive?: boolean,
+    needEncrypt?: boolean,
+  ): OverviewLevelCode {
+    if (
+      code === 'L1' ||
+      code === 'L2' ||
+      code === 'L3' ||
+      code === 'L4' ||
+      code === 'L5'
+    ) {
+      return code;
+    }
+
+    if (needEncrypt) return 'L4';
+    if (isSensitive) return 'L3';
+    return 'L2';
+  }
+
+  private getDefaultLevelColor(levelCode: OverviewLevelCode): string {
+    if (levelCode === 'L1') return '#52c41a';
+    if (levelCode === 'L2') return '#1677ff';
+    if (levelCode === 'L3') return '#fa8c16';
+    if (levelCode === 'L4') return '#f5222d';
+    return '#722ed1';
+  }
+
+  private resolveLevelColor(
+    levelCode: OverviewLevelCode | null | undefined,
+    levelColor?: string | null,
+    levelColorMap?: Map<OverviewLevelCode, string>,
+  ): string | null {
+    if (!levelCode) {
+      return null;
+    }
+
+    const normalized = levelColor?.trim() ?? '';
+    if (/^#[0-9a-fA-F]{6}$/.test(normalized)) {
+      return normalized;
+    }
+
+    const templateColor = levelColorMap?.get(levelCode);
+    if (templateColor) {
+      return templateColor;
+    }
+
+    return this.getDefaultLevelColor(levelCode);
   }
 
   private buildSampleData(
@@ -300,7 +545,16 @@ export class DataOverviewService {
         assetGroup: true,
         tables: {
           include: {
-            columns: true,
+            columns: {
+              include: {
+                classificationDataType: {
+                  include: {
+                    category: true,
+                    levelDefinition: true,
+                  },
+                },
+              },
+            },
           },
           orderBy: { tableName: 'asc' },
         },
@@ -309,7 +563,9 @@ export class DataOverviewService {
     });
   }
 
-  private async buildFullDataRecords(): Promise<OverviewFieldRecord[]> {
+  private async buildFullDataRecords(
+    referenceData?: OverviewReferenceData,
+  ): Promise<OverviewFieldRecord[]> {
     const {
       assets,
       template,
@@ -318,11 +574,19 @@ export class DataOverviewService {
       primaryMaskingFeature,
       primaryEncryptionFeature,
     } = await this.getOverviewContext();
+    const resolvedReferenceData =
+      referenceData ?? (await this.getOverviewReferenceData());
 
     const templateDataTypes = template?.dataTypes ?? [];
 
     return assets.flatMap((asset) => {
+      const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
       const tableName = `${this.normalizeAssetName(asset.name)}_main`;
+      const assetGroupMeta = this.buildAssetGroupMeta(
+        asset.assetGroupId,
+        asset.assetGroup?.name,
+        resolvedReferenceData.assetGroupMap,
+      );
       const effectiveDataTypes =
         templateDataTypes.length > 0
           ? templateDataTypes
@@ -345,6 +609,17 @@ export class DataOverviewService {
           primaryMaskingFeature?.sampleValue ?? undefined,
           primaryEncryptionFeature?.sampleValue ?? undefined,
         );
+        const classificationMeta = this.buildClassificationMeta(
+          'id' in dataType.category ? dataType.category.id : null,
+          dataType.name,
+          dataType.category?.name ?? '未分类',
+          resolvedReferenceData.classificationCategoryMap,
+        );
+        const levelCode = this.mapLevelCode(
+          dataType.levelDefinition?.code,
+          dataType.isSensitive,
+          dataType.needEncrypt,
+        );
         const status =
           asset.status === CommonStatus.ACTIVE
             ? 'active'
@@ -354,15 +629,25 @@ export class DataOverviewService {
 
         return {
           id: `${asset.id}-${dataType.id}`,
+          databaseName,
+          tableName,
           fieldName,
           fieldComment: dataType.name,
           fieldTable: tableName,
           dataType: this.inferSqlType(fieldName),
-          dataCategory: dataType.category?.name ?? '未分类',
+          dataCategory: classificationMeta.dataCategory,
+          dataTypeName: classificationMeta.dataTypeName,
+          classificationPathNames: classificationMeta.classificationPathNames,
           dataLevel: this.mapDataLevel(
             dataType.levelDefinition?.code,
             dataType.isSensitive,
             dataType.needEncrypt,
+          ),
+          levelCode,
+          levelColor: this.resolveLevelColor(
+            levelCode,
+            dataType.levelDefinition?.color,
+            resolvedReferenceData.levelColorMap,
           ),
           isSensitive: dataType.isSensitive,
           maskingStatus: this.resolveProtectionStatus(
@@ -375,7 +660,9 @@ export class DataOverviewService {
             sampleData,
             encryptionFeatures,
           ),
-          groupName: asset.assetGroup?.name ?? '',
+          groupName: assetGroupMeta.groupName,
+          rootGroupName: assetGroupMeta.rootGroupName,
+          assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
           sampleData,
           updateTime: this.formatDateTime(asset.updatedAt),
           status,
@@ -385,21 +672,53 @@ export class DataOverviewService {
   }
 
   async listFullData() {
-    const { maskingFeatures, encryptionFeatures } = await this.getActiveProtectionFeatures();
-    const importedAssets = await this.getImportedAssets();
+    const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
+      this.getOverviewReferenceData(),
+      this.getActiveProtectionFeatures(),
+      this.getImportedAssets(),
+    ]);
+    const { maskingFeatures, encryptionFeatures } = protectionFeatures;
     const importedColumns = importedAssets.flatMap((asset) =>
-      asset.tables.flatMap((table) =>
-        table.columns.map((column) => {
+      asset.tables.flatMap((table) => {
+        const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
+        const assetGroupMeta = this.buildAssetGroupMeta(
+          asset.assetGroupId,
+          asset.assetGroup?.name,
+          referenceData.assetGroupMap,
+        );
+
+        return table.columns.map((column) => {
           const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+          const classificationMeta = this.buildClassificationMeta(
+            column.classificationDataType?.categoryId ?? null,
+            column.classificationDataType?.name ?? null,
+            column.dataCategory ?? '未分类',
+            referenceData.classificationCategoryMap,
+          );
+          const dataLevel = this.mapPersistedLevel(column.dataLevel);
+          const levelCode = this.mapPersistedLevelCode(
+            column.dataLevel,
+            column.classificationDataType?.levelDefinition?.code,
+          );
 
           return {
             id: column.id,
+            databaseName,
+            tableName: table.tableName,
             fieldName: column.columnName,
             fieldComment: column.columnComment ?? '',
             fieldTable: table.tableName,
             dataType: column.columnType,
-            dataCategory: column.dataCategory ?? '未分类',
-            dataLevel: this.mapPersistedLevel(column.dataLevel),
+            dataCategory: classificationMeta.dataCategory,
+            dataTypeName: classificationMeta.dataTypeName,
+            classificationPathNames: classificationMeta.classificationPathNames,
+            dataLevel,
+            levelCode,
+            levelColor: this.resolveLevelColor(
+              levelCode,
+              column.classificationDataType?.levelDefinition?.color,
+              referenceData.levelColorMap,
+            ),
             isSensitive: column.isSensitive,
             maskingStatus: this.resolveProtectionStatus(
               column.needMask,
@@ -411,7 +730,9 @@ export class DataOverviewService {
               sampleData,
               encryptionFeatures,
             ),
-            groupName: asset.assetGroup?.name ?? '',
+            groupName: assetGroupMeta.groupName,
+            rootGroupName: assetGroupMeta.rootGroupName,
+            assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
             sampleData,
             updateTime: this.formatDateTime(column.updatedAt),
             status:
@@ -421,36 +742,68 @@ export class DataOverviewService {
                   ? 'processing'
                   : 'inactive',
           } satisfies OverviewFieldRecord;
-        }),
-      ),
+        });
+      }),
     );
 
     if (importedColumns.length > 0) {
       return importedColumns;
     }
 
-    return this.buildFullDataRecords();
+    return this.buildFullDataRecords(referenceData);
   }
 
   async listMissedData() {
-    const { maskingFeatures, encryptionFeatures } = await this.getActiveProtectionFeatures();
-    const importedAssets = await this.getImportedAssets();
+    const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
+      this.getOverviewReferenceData(),
+      this.getActiveProtectionFeatures(),
+      this.getImportedAssets(),
+    ]);
+    const { maskingFeatures, encryptionFeatures } = protectionFeatures;
     const importedMissedColumns = importedAssets.flatMap((asset) =>
-      asset.tables.flatMap((table) =>
-        table.columns
+      asset.tables.flatMap((table) => {
+        const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
+        const assetGroupMeta = this.buildAssetGroupMeta(
+          asset.assetGroupId,
+          asset.assetGroup?.name,
+          referenceData.assetGroupMap,
+        );
+
+        return table.columns
           .filter((column) => !column.classificationDataTypeId)
           .map((column, index) => {
             const priority = index % 3 === 0 ? 'high' : index % 3 === 1 ? 'medium' : 'low';
             const missRate = Math.min(95, 25 + index * 6);
             const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+            const classificationMeta = this.buildClassificationMeta(
+              column.classificationDataType?.categoryId ?? null,
+              column.classificationDataType?.name ?? null,
+              column.dataCategory ?? '未分类',
+              referenceData.classificationCategoryMap,
+            );
+            const dataLevel = this.mapPersistedLevel(column.dataLevel);
+            const levelCode = this.mapPersistedLevelCode(
+              column.dataLevel,
+              column.classificationDataType?.levelDefinition?.code,
+            );
             return {
               id: column.id,
+              databaseName,
+              tableName: table.tableName,
               fieldName: column.columnName,
               fieldComment: column.columnComment ?? '',
               fieldTable: table.tableName,
               dataType: column.columnType,
-              dataCategory: column.dataCategory ?? '未分类',
-              dataLevel: this.mapPersistedLevel(column.dataLevel),
+              dataCategory: classificationMeta.dataCategory,
+              dataTypeName: classificationMeta.dataTypeName,
+              classificationPathNames: classificationMeta.classificationPathNames,
+              dataLevel,
+              levelCode,
+              levelColor: this.resolveLevelColor(
+                levelCode,
+                column.classificationDataType?.levelDefinition?.color,
+                referenceData.levelColorMap,
+              ),
               isSensitive: column.isSensitive,
               maskingStatus: this.resolveProtectionStatus(
                 column.needMask,
@@ -462,7 +815,9 @@ export class DataOverviewService {
                 sampleData,
                 encryptionFeatures,
               ),
-              groupName: asset.assetGroup?.name ?? '',
+              groupName: assetGroupMeta.groupName,
+              rootGroupName: assetGroupMeta.rootGroupName,
+              assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
               key: `${asset.ipAddress}:${asset.port}:${table.tableName}:${column.columnName}`,
               missCount: 10 + index * 3,
               missRate,
@@ -473,8 +828,8 @@ export class DataOverviewService {
               sampleData,
               updateTime: this.formatDateTime(column.updatedAt),
             } satisfies MissedDataRecord;
-          }),
-      ),
+          });
+      }),
     );
 
     if (importedMissedColumns.length > 0) {
@@ -488,19 +843,38 @@ export class DataOverviewService {
       .map((item, index) => {
         const priority = index % 3 === 0 ? 'high' : index % 3 === 1 ? 'medium' : 'low';
         const missRate = Math.min(95, 20 + index * 7);
+        const assetGroupMeta = this.buildAssetGroupMeta(
+          item.assetGroupId,
+          item.assetGroup?.name ?? '未分组',
+          referenceData.assetGroupMap,
+        );
+        const classificationMeta = this.buildClassificationMeta(
+          null,
+          '待治理资产',
+          '待治理资产',
+          referenceData.classificationCategoryMap,
+        );
 
         return {
           id: item.id,
+          databaseName: item.databaseName ?? item.sourceName,
+          tableName: item.databaseName ?? 'auto_scan',
           fieldName: item.databaseName ?? item.sourceName,
           fieldComment: `${item.sourceName} 未认领资产`,
           fieldTable: item.databaseName ?? 'auto_scan',
           dataType: item.sourceType.toUpperCase(),
-          dataCategory: '待治理资产',
+          dataCategory: classificationMeta.dataCategory,
+          dataTypeName: classificationMeta.dataTypeName,
+          classificationPathNames: classificationMeta.classificationPathNames,
           dataLevel: 'internal',
+          levelCode: 'L2',
+          levelColor: this.resolveLevelColor('L2', null, referenceData.levelColorMap),
           isSensitive: false,
           maskingStatus: 'not_required',
           encryptionStatus: 'not_required',
-          groupName: item.assetGroup?.name ?? '未分组',
+          groupName: assetGroupMeta.groupName,
+          rootGroupName: assetGroupMeta.rootGroupName,
+          assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
           key: `${item.ipAddress}:${item.port}`,
           missCount: 10 + index * 5,
           missRate,
@@ -515,8 +889,12 @@ export class DataOverviewService {
   }
 
   async listTableData() {
-    const { maskingFeatures, encryptionFeatures } = await this.getActiveProtectionFeatures();
-    const importedAssets = await this.getImportedAssets();
+    const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
+      this.getOverviewReferenceData(),
+      this.getActiveProtectionFeatures(),
+      this.getImportedAssets(),
+    ]);
+    const { maskingFeatures, encryptionFeatures } = protectionFeatures;
     const importedDatabases = importedAssets.filter((asset) => asset.tables.length > 0);
     if (importedDatabases.length > 0) {
       const groupedByIp = new Map<string, typeof importedDatabases>();
@@ -529,59 +907,92 @@ export class DataOverviewService {
       return Array.from(groupedByIp.entries()).map(([ip, ipAssets]) => ({
         ip,
         status: ipAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
-        databases: ipAssets.map((asset) => ({
-          id: asset.id,
-          assetId: asset.id,
-          assetName: asset.name,
-          name: asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name),
-          type: asset.sourceType,
-          status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
-          tables: asset.tables.map((table) => ({
-            id: table.id,
-            name: table.tableName,
-            databaseId: asset.id,
-            rowCount: table.rowCount,
-            size: table.sizeBytes,
-            status:
-              asset.status === CommonStatus.ARCHIVED
-                ? 'maintenance'
-                : asset.status === CommonStatus.ACTIVE
-              ? 'online'
-              : 'offline',
-            lastSyncTime: this.formatDateTime(table.updatedAt),
-            syncStatus: 'success',
-            fields: table.columns.map((column) => {
-              const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+        databases: ipAssets.map((asset) => {
+          const assetGroupMeta = this.buildAssetGroupMeta(
+            asset.assetGroupId,
+            asset.assetGroup?.name,
+            referenceData.assetGroupMap,
+          );
 
-              return {
-                id: column.id,
-                fieldName: column.columnName,
-                fieldComment: column.columnComment ?? '',
-                dataType: column.columnType,
-                dataCategory: column.dataCategory ?? '未分类',
-                dataLevel: this.mapPersistedLevel(column.dataLevel),
-                isSensitive: column.isSensitive,
-                maskingStatus: this.resolveProtectionStatus(
-                  column.needMask,
+          return {
+            id: asset.id,
+            assetId: asset.id,
+            assetName: asset.name,
+            name: asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name),
+            type: asset.sourceType,
+            status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
+            tables: asset.tables.map((table) => ({
+              id: table.id,
+              name: table.tableName,
+              databaseId: asset.id,
+              rowCount: table.rowCount,
+              size: table.sizeBytes,
+              status:
+                asset.status === CommonStatus.ARCHIVED
+                  ? 'maintenance'
+                  : asset.status === CommonStatus.ACTIVE
+                ? 'online'
+                : 'offline',
+              lastSyncTime: this.formatDateTime(table.updatedAt),
+              syncStatus: 'success',
+              fields: table.columns.map((column) => {
+                const sampleData = Array.isArray(column.sampleData)
+                  ? (column.sampleData as string[])
+                  : [];
+                const classificationMeta = this.buildClassificationMeta(
+                  column.classificationDataType?.categoryId ?? null,
+                  column.classificationDataType?.name ?? null,
+                  column.dataCategory ?? '未分类',
+                  referenceData.classificationCategoryMap,
+                );
+                const dataLevel = this.mapPersistedLevel(column.dataLevel);
+                const levelCode = this.mapPersistedLevelCode(
+                  column.dataLevel,
+                  column.classificationDataType?.levelDefinition?.code,
+                );
+
+                return {
+                  id: column.id,
+                  fieldName: column.columnName,
+                  fieldComment: column.columnComment ?? '',
+                  fieldTable: table.tableName,
+                  dataType: column.columnType,
+                  dataCategory: classificationMeta.dataCategory,
+                  dataTypeName: classificationMeta.dataTypeName,
+                  classificationPathNames:
+                    classificationMeta.classificationPathNames,
+                  dataLevel,
+                  levelCode,
+                  levelColor: this.resolveLevelColor(
+                    levelCode,
+                    column.classificationDataType?.levelDefinition?.color,
+                    referenceData.levelColorMap,
+                  ),
+                  isSensitive: column.isSensitive,
+                  maskingStatus: this.resolveProtectionStatus(
+                    column.needMask,
+                    sampleData,
+                    maskingFeatures,
+                  ),
+                  encryptionStatus: this.resolveProtectionStatus(
+                    column.needEncrypt,
+                    sampleData,
+                    encryptionFeatures,
+                  ),
+                  groupName: assetGroupMeta.groupName,
+                  rootGroupName: assetGroupMeta.rootGroupName,
+                  assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
                   sampleData,
-                  maskingFeatures,
-                ),
-                encryptionStatus: this.resolveProtectionStatus(
-                  column.needEncrypt,
-                  sampleData,
-                  encryptionFeatures,
-                ),
-                groupName: asset.assetGroup?.name ?? '',
-                sampleData,
-                updateTime: this.formatDateTime(column.updatedAt),
-              };
-            }),
-          })),
-        } satisfies DatabaseRecord)),
+                  updateTime: this.formatDateTime(column.updatedAt),
+                };
+              }),
+            })),
+          } satisfies DatabaseRecord;
+        }),
       } satisfies DatabaseInstanceRecord));
     }
 
-    const fields = await this.buildFullDataRecords();
+    const fields = await this.buildFullDataRecords(referenceData);
     const { assets } = await this.getOverviewContext();
 
     const fieldsByAssetId = new Map<string, TableFieldRecord[]>();
@@ -592,13 +1003,20 @@ export class DataOverviewService {
         id: field.id,
         fieldName: field.fieldName,
         fieldComment: field.fieldComment,
+        fieldTable: field.fieldTable,
         dataType: field.dataType,
         dataCategory: field.dataCategory,
+        dataTypeName: field.dataTypeName,
+        classificationPathNames: field.classificationPathNames,
         dataLevel: field.dataLevel,
+        levelCode: field.levelCode,
+        levelColor: field.levelColor,
         isSensitive: field.isSensitive,
         maskingStatus: field.maskingStatus,
         encryptionStatus: field.encryptionStatus,
         groupName: field.groupName,
+        rootGroupName: field.rootGroupName,
+        assetGroupPathNames: field.assetGroupPathNames,
         sampleData: field.sampleData,
         updateTime: field.updateTime,
       });
