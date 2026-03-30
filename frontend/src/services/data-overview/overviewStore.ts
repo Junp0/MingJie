@@ -1,6 +1,7 @@
 import { request } from '@/services/request';
 
 export type OverviewDataLevel = 'public' | 'internal' | 'confidential' | 'secret';
+export type ProtectionStatus = 'not_required' | 'recommended' | 'confirmed';
 
 export interface FullDataItem {
   id: string;
@@ -11,8 +12,8 @@ export interface FullDataItem {
   dataCategory: string;
   dataLevel: OverviewDataLevel;
   isSensitive: boolean;
-  isDesensitized: boolean;
-  isEncrypted: boolean;
+  maskingStatus: ProtectionStatus;
+  encryptionStatus: ProtectionStatus;
   groupName: string;
   sampleData: string[];
   updateTime: string;
@@ -37,8 +38,8 @@ export interface TableFieldItem {
   dataCategory: string;
   dataLevel: OverviewDataLevel;
   isSensitive: boolean;
-  isDesensitized: boolean;
-  isEncrypted: boolean;
+  maskingStatus: ProtectionStatus;
+  encryptionStatus: ProtectionStatus;
   groupName: string;
   sampleData: string[];
   updateTime: string;

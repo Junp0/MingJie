@@ -35,7 +35,7 @@ export class CreateProtectionFeatureDto {
   @IsInt()
   @Min(0)
   @Max(100)
-  confidence!: number;
+  hitRate!: number;
 
   @ApiPropertyOptional({ example: 10 })
   @IsOptional()

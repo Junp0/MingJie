@@ -3,6 +3,8 @@ import {
   CommonStatus,
   DataLevel,
   ImportTaskStatus,
+  Prisma,
+  ClassificationTaskSource,
   TemplateStatus,
 } from '@prisma/client';
 import mysql from 'mysql2/promise';
@@ -34,6 +36,76 @@ type RemoteColumn = {
 @Injectable()
 export class ImportTasksService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private normalizeAssetIds(value: unknown) {
+    if (!Array.isArray(value)) return [];
+
+    return Array.from(
+      new Set(
+        value
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private async resolveClassificationTaskDataSource(
+    dataAssetIds: string[],
+    fallback?: string | null,
+  ) {
+    if (!dataAssetIds.length) {
+      return fallback?.trim() || '未关联数据资产';
+    }
+
+    const assets = await this.prisma.dataAsset.findMany({
+      where: { id: { in: dataAssetIds } },
+      select: { id: true, name: true },
+    });
+    const assetNameMap = new Map(assets.map((item) => [item.id, item.name]));
+    const assetNames = dataAssetIds
+      .map((assetId) => assetNameMap.get(assetId))
+      .filter((item): item is string => Boolean(item));
+
+    return assetNames.join('、') || fallback?.trim() || '未关联数据资产';
+  }
+
+  private buildImportTaskUpdateData(
+    dto: UpdateImportTaskDto,
+  ): Prisma.ImportTaskUpdateInput {
+    const data: Prisma.ImportTaskUpdateInput = {};
+
+    if (dto.sourceName !== undefined) data.sourceName = dto.sourceName;
+    if (dto.sourceType !== undefined) data.sourceType = dto.sourceType;
+    if (dto.ipAddress !== undefined) data.ipAddress = dto.ipAddress;
+    if (dto.port !== undefined) data.port = dto.port;
+    if (dto.databaseName !== undefined) data.databaseName = dto.databaseName;
+    if (dto.sourceUsername !== undefined)
+      data.sourceUsername = dto.sourceUsername;
+    if (dto.status !== undefined) data.status = dto.status;
+    if (dto.progress !== undefined) data.progress = dto.progress;
+    if (dto.description !== undefined) data.description = dto.description;
+
+    if (dto.assetGroupId !== undefined) {
+      data.assetGroup = {
+        connect: { id: dto.assetGroupId },
+      };
+    }
+
+    if (dto.creatorId !== undefined) {
+      data.creator = dto.creatorId
+        ? { connect: { id: dto.creatorId } }
+        : { disconnect: true };
+    }
+
+    if (dto.classificationTaskId !== undefined) {
+      data.classificationTask = dto.classificationTaskId
+        ? { connect: { id: dto.classificationTaskId } }
+        : { disconnect: true };
+    }
+
+    return data;
+  }
 
   private getInclude() {
     return {
@@ -87,7 +159,11 @@ export class ImportTasksService {
           : 'pending';
   }
 
-  private mapLevelCodeToDataLevel(code?: string | null, isSensitive?: boolean, needEncrypt?: boolean) {
+  private mapLevelCodeToDataLevel(
+    code?: string | null,
+    isSensitive?: boolean,
+    needEncrypt?: boolean,
+  ) {
     if (code === 'L1') return DataLevel.PUBLIC;
     if (code === 'L2') return DataLevel.INTERNAL;
     if (code === 'L3') return DataLevel.CONFIDENTIAL;
@@ -128,11 +204,7 @@ export class ImportTasksService {
     return template?.dataTypes ?? [];
   }
 
-  private matchRuleValue(
-    value: string,
-    matcher: string,
-    expected: string,
-  ) {
+  private matchRuleValue(value: string, matcher: string, expected: string) {
     const normalizedValue = value.toLowerCase();
     const normalizedExpected = expected.toLowerCase();
 
@@ -197,13 +269,13 @@ export class ImportTasksService {
         const score = dataType.rules.reduce((total, rule) => {
           const currentValue =
             rule.target === 'fieldComment'
-              ? column.COLUMN_COMMENT ?? ''
+              ? (column.COLUMN_COMMENT ?? '')
               : rule.target === 'fieldType'
                 ? column.COLUMN_TYPE
                 : rule.target === 'tableName'
                   ? table.TABLE_NAME
                   : rule.target === 'tableComment'
-                    ? table.TABLE_COMMENT ?? ''
+                    ? (table.TABLE_COMMENT ?? '')
                     : column.COLUMN_NAME;
 
           return this.matchRuleValue(currentValue, rule.matcher, rule.value)
@@ -249,8 +321,12 @@ export class ImportTasksService {
     const count = await this.prisma.importTask.count();
     if (count > 0) return;
 
-    const assetGroup = await this.prisma.assetGroup.findFirst({ orderBy: { createdAt: 'asc' } });
-    const creator = await this.prisma.user.findFirst({ orderBy: { createdAt: 'asc' } });
+    const assetGroup = await this.prisma.assetGroup.findFirst({
+      orderBy: { createdAt: 'asc' },
+    });
+    const creator = await this.prisma.user.findFirst({
+      orderBy: { createdAt: 'asc' },
+    });
     if (!assetGroup) return;
 
     await this.prisma.importTask.create({
@@ -272,7 +348,6 @@ export class ImportTasksService {
   }
 
   async findAll() {
-    await this.seed();
     return this.prisma.importTask.findMany({
       include: this.getInclude(),
       orderBy: { createdAt: 'desc' },
@@ -281,7 +356,9 @@ export class ImportTasksService {
 
   async discoverDatabases(dto: DiscoverImportDatabasesDto) {
     if (dto.sourceType.toLowerCase() !== 'mysql') {
-      throw new BadRequestException('Only MySQL discovery is supported right now.');
+      throw new BadRequestException(
+        'Only MySQL discovery is supported right now.',
+      );
     }
 
     let connection: mysql.Connection | null = null;
@@ -306,7 +383,9 @@ export class ImportTasksService {
       };
     } catch (error) {
       throw new BadRequestException(
-        error instanceof Error ? error.message : 'Failed to connect to the database server.',
+        error instanceof Error
+          ? error.message
+          : 'Failed to connect to the database server.',
       );
     } finally {
       if (connection) {
@@ -359,7 +438,9 @@ export class ImportTasksService {
 
       const [assetGroup, creator] = await Promise.all([
         this.prisma.assetGroup.findUnique({ where: { id: dto.assetGroupId } }),
-        dto.creatorId ? this.prisma.user.findUnique({ where: { id: dto.creatorId } }) : this.prisma.user.findFirst(),
+        dto.creatorId
+          ? this.prisma.user.findUnique({ where: { id: dto.creatorId } })
+          : this.prisma.user.findFirst(),
       ]);
 
       let asset = await this.prisma.dataAsset.findFirst({
@@ -426,7 +507,8 @@ export class ImportTasksService {
       for (const table of tablesResult) {
         const tableColumns = columnsByTable.get(table.TABLE_NAME) ?? [];
         recordCount += Number(table.TABLE_ROWS ?? 0);
-        sizeBytes += Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0);
+        sizeBytes +=
+          Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0);
 
         const createdTable = await this.prisma.dataAssetTable.create({
           data: {
@@ -436,14 +518,18 @@ export class ImportTasksService {
             tableComment: table.TABLE_COMMENT ?? '',
             engine: table.ENGINE ?? undefined,
             rowCount: Number(table.TABLE_ROWS ?? 0),
-            sizeBytes: Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0),
+            sizeBytes:
+              Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0),
           },
         });
 
         for (const column of tableColumns) {
           fieldCount += 1;
           const classification = this.classifyColumn(column, table, dataTypes);
-          if (this.dataLevelWeight(classification.dataLevel) > this.dataLevelWeight(highestLevel)) {
+          if (
+            this.dataLevelWeight(classification.dataLevel) >
+            this.dataLevelWeight(highestLevel)
+          ) {
             highestLevel = classification.dataLevel;
           }
 
@@ -514,11 +600,22 @@ export class ImportTasksService {
         port: dto.port,
         databaseName: dto.databaseName,
         sourceUsername: dto.sourceUsername,
-        assetGroupId: dto.assetGroupId,
-        creatorId: dto.creatorId,
         status: ImportTaskStatus.RUNNING,
         progress: 10,
         description: dto.description,
+        assetGroup: {
+          connect: { id: dto.assetGroupId },
+        },
+        creator: dto.creatorId
+          ? {
+              connect: { id: dto.creatorId },
+            }
+          : undefined,
+        classificationTask: dto.classificationTaskId
+          ? {
+              connect: { id: dto.classificationTaskId },
+            }
+          : undefined,
       },
       include: this.getInclude(),
     });
@@ -548,7 +645,8 @@ export class ImportTasksService {
         data: {
           status: ImportTaskStatus.FAILED,
           progress: 0,
-          errorMessage: error instanceof Error ? error.message : '数据库连接或结构读取失败',
+          errorMessage:
+            error instanceof Error ? error.message : '数据库连接或结构读取失败',
         },
       });
     }
@@ -562,7 +660,7 @@ export class ImportTasksService {
   async update(id: string, dto: UpdateImportTaskDto) {
     return this.prisma.importTask.update({
       where: { id },
-      data: dto,
+      data: this.buildImportTaskUpdateData(dto),
       include: this.getInclude(),
     });
   }
@@ -579,10 +677,44 @@ export class ImportTasksService {
       return { success: false };
     }
 
+    let deletedClassificationTask = false;
     if (task.classificationTask?.id) {
-      await this.prisma.classificationTask.delete({
-        where: { id: task.classificationTask.id },
+      const currentAssetIds = this.normalizeAssetIds(
+        task.classificationTask.dataAssetIds,
+      );
+      const nextAssetIds = task.dataAssetId
+        ? currentAssetIds.filter((assetId) => assetId !== task.dataAssetId)
+        : currentAssetIds;
+
+      const linkedImportTaskCount = await this.prisma.importTask.count({
+        where: {
+          classificationTask: {
+            is: { id: task.classificationTask.id },
+          },
+          NOT: { id },
+        },
       });
+
+      if (
+        task.classificationTask.source ===
+          ClassificationTaskSource.ASSET_IMPORT &&
+        nextAssetIds.length === 0 &&
+        linkedImportTaskCount === 0
+      ) {
+        await this.prisma.classificationTask.delete({
+          where: { id: task.classificationTask.id },
+        });
+        deletedClassificationTask = true;
+      } else {
+        await this.prisma.classificationTask.update({
+          where: { id: task.classificationTask.id },
+          data: {
+            dataAssetIds: nextAssetIds as Prisma.InputJsonValue,
+            dataSource:
+              await this.resolveClassificationTaskDataSource(nextAssetIds),
+          },
+        });
+      }
     }
 
     const dataAssetId = task.dataAssetId;
@@ -607,7 +739,7 @@ export class ImportTasksService {
 
     return {
       success: true,
-      deletedClassificationTask: Boolean(task.classificationTask?.id),
+      deletedClassificationTask,
       deletedDataAsset,
     };
   }

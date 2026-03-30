@@ -6,9 +6,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listDatabaseInstances,
   type OverviewDataLevel as DataAssetLevel,
+  type ProtectionStatus,
 } from '@/services/data-overview/overviewStore';
 
 const { Text } = Typography;
+
+const protectionStatusMap: Record<ProtectionStatus, { color: string; text: string }> = {
+  not_required: { color: 'default', text: '无需' },
+  recommended: { color: 'orange', text: '建议' },
+  confirmed: { color: 'green', text: '确认' },
+};
 
 interface DatabaseInstance {
   ip: string;
@@ -46,8 +53,8 @@ interface FieldItem {
   dataCategory: string;
   dataLevel: DataAssetLevel;
   isSensitive: boolean;
-  isDesensitized: boolean;
-  isEncrypted: boolean;
+  maskingStatus: ProtectionStatus;
+  encryptionStatus: ProtectionStatus;
   groupName: string;
   sampleData: string[];
   updateTime: string;
@@ -209,32 +216,34 @@ const TableDataList: React.FC = () => {
       ),
     },
     {
-      title: '是否脱敏',
-      dataIndex: 'isDesensitized',
+      title: '脱敏情况',
+      dataIndex: 'maskingStatus',
       align: 'center',
       valueType: 'select',
       valueEnum: {
-        true: { text: '是', status: 'Success' },
-        false: { text: '否', status: 'Default' },
+        not_required: { text: '无需脱敏' },
+        recommended: { text: '建议脱敏' },
+        confirmed: { text: '确认脱敏' },
       },
       render: (_, record) => (
-        <Tag color={record.isDesensitized ? 'green' : 'default'}>
-          {record.isDesensitized ? '是' : '否'}
+        <Tag color={protectionStatusMap[record.maskingStatus].color}>
+          {protectionStatusMap[record.maskingStatus].text}脱敏
         </Tag>
       ),
     },
     {
-      title: '是否加密',
-      dataIndex: 'isEncrypted',
+      title: '加密情况',
+      dataIndex: 'encryptionStatus',
       align: 'center',
       valueType: 'select',
       valueEnum: {
-        true: { text: '是', status: 'Success' },
-        false: { text: '否', status: 'Default' },
+        not_required: { text: '无需加密' },
+        recommended: { text: '建议加密' },
+        confirmed: { text: '确认加密' },
       },
       render: (_, record) => (
-        <Tag color={record.isEncrypted ? 'green' : 'default'}>
-          {record.isEncrypted ? '是' : '否'}
+        <Tag color={protectionStatusMap[record.encryptionStatus].color}>
+          {protectionStatusMap[record.encryptionStatus].text}加密
         </Tag>
       ),
     },
@@ -544,8 +553,8 @@ const TableDataList: React.FC = () => {
                   dataCategory,
                   dataLevel,
                   isSensitive,
-                  isDesensitized,
-                  isEncrypted,
+                  maskingStatus,
+                  encryptionStatus,
                   groupName,
                 } = params as Record<string, any>;
 
@@ -585,16 +594,14 @@ const TableDataList: React.FC = () => {
                     (item) => item.isSensitive === (isSensitive === true || isSensitive === 'true'),
                   );
                 }
-                if (isDesensitized !== undefined) {
+                if (maskingStatus) {
                   filteredData = filteredData.filter(
-                    (item) =>
-                      item.isDesensitized ===
-                      (isDesensitized === true || isDesensitized === 'true'),
+                    (item) => item.maskingStatus === maskingStatus,
                   );
                 }
-                if (isEncrypted !== undefined) {
+                if (encryptionStatus) {
                   filteredData = filteredData.filter(
-                    (item) => item.isEncrypted === (isEncrypted === true || isEncrypted === 'true'),
+                    (item) => item.encryptionStatus === encryptionStatus,
                   );
                 }
                 if (groupName) {

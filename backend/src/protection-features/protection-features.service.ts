@@ -39,7 +39,7 @@ export class ProtectionFeaturesService {
           scene: '通用脱敏形态',
           featurePoint: '中间4位替换为*',
           matcher: 'regex',
-          confidence: 95,
+          hitRate: 95,
           priority: 10,
           expression: '^1\\d{2}\\*{4}\\d{4}$',
           sampleValue: '138****1234',
@@ -54,7 +54,7 @@ export class ProtectionFeaturesService {
           scene: '摘要哈希',
           featurePoint: '64位十六进制摘要串',
           matcher: 'regex',
-          confidence: 88,
+          hitRate: 88,
           priority: 20,
           expression: '^[A-Fa-f0-9]{64}$',
           sampleValue: '9f86d081884c7d659a2feaa0c55ad015...',
@@ -67,7 +67,6 @@ export class ProtectionFeaturesService {
   }
 
   async findAll(type?: string) {
-    await this.seed();
     const normalizedType = this.normalizeType(type);
     return this.prisma.protectionFeature.findMany({
       where: normalizedType ? { featureType: normalizedType } : undefined,

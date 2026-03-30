@@ -68,125 +68,127 @@ enum ProtectionFeatureStatus {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  username     String   @unique
+  id           String       @id @default(cuid())
+  username     String       @unique
   passwordHash String
   name         String
   avatar       String?
-  email        String?  @unique
-  phone        String?  @unique
-  role         UserRole @default(USER)
+  email        String?      @unique
+  phone        String?      @unique
+  role         UserRole     @default(USER)
   title        String?
   department   String?
   signature    String?
   status       CommonStatus @default(ACTIVE)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  importTasks            ImportTask[]
-  classificationTasks    ClassificationTask[]
-  protectionFeatures     ProtectionFeature[]
+  importTasks         ImportTask[]
+  classificationTasks ClassificationTask[]
+  protectionFeatures  ProtectionFeature[]
 }
 
 model AssetGroup {
-  id            String      @id @default(cuid())
-  name          String
-  description   String?
-  parentId      String?
-  level         Int         @default(1)
-  owner         String?
-  department    String?
-  status        CommonStatus @default(ACTIVE)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  parentId    String?
+  level       Int          @default(1)
+  owner       String?
+  department  String?
+  status      CommonStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  parent        AssetGroup? @relation("AssetGroupTree", fields: [parentId], references: [id])
-  children      AssetGroup[] @relation("AssetGroupTree")
-  dataAssets    DataAsset[]
-  importTasks   ImportTask[]
-  scanRules     AutoScanRule[]
-  scanResults   AutoScanResult[]
+  parent      AssetGroup?      @relation("AssetGroupTree", fields: [parentId], references: [id])
+  children    AssetGroup[]     @relation("AssetGroupTree")
+  dataAssets  DataAsset[]
+  importTasks ImportTask[]
+  scanRules   AutoScanRule[]
+  scanResults AutoScanResult[]
 
   @@index([parentId])
 }
 
 model DataAsset {
-  id               String      @id @default(cuid())
-  name             String
-  sourceType       String
+  id                 String       @id @default(cuid())
+  name               String
+  sourceType         String
   sourceDatabaseName String?
-  ipAddress        String
-  port             Int
-  status           CommonStatus @default(ACTIVE)
-  dataLevel        DataLevel
-  owner            String
-  department       String
-  tags             Json?
-  description      String?
-  tableCount       Int         @default(0)
-  fieldCount       Int         @default(0)
-  sizeBytes        Int         @default(0)
-  recordCount      Int         @default(0)
-  assetGroupId     String
-  scanResultId     String?     @unique
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  ipAddress          String
+  port               Int
+  status             CommonStatus @default(ACTIVE)
+  dataLevel          DataLevel
+  owner              String
+  department         String
+  tags               Json?
+  description        String?
+  tableCount         Int          @default(0)
+  fieldCount         Int          @default(0)
+  sizeBytes          Int          @default(0)
+  recordCount        Int          @default(0)
+  assetGroupId       String
+  scanResultId       String?      @unique
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  assetGroup       AssetGroup   @relation(fields: [assetGroupId], references: [id])
-  scanResult       AutoScanResult? @relation(fields: [scanResultId], references: [id])
-  tables           DataAssetTable[]
-  importTasks      ImportTask[]
+  assetGroup  AssetGroup       @relation(fields: [assetGroupId], references: [id])
+  scanResult  AutoScanResult?  @relation(fields: [scanResultId], references: [id])
+  tables      DataAssetTable[]
+  importTasks ImportTask[]
 
   @@index([assetGroupId])
 }
 
 model ImportTask {
-  id                    String              @id @default(cuid())
-  sourceName            String
-  sourceType            String
-  ipAddress             String
-  port                  Int
-  databaseName          String?
-  sourceUsername        String?
-  assetGroupId          String
-  dataAssetId           String?
-  creatorId             String?
-  status                ImportTaskStatus    @default(PENDING)
-  progress              Int                 @default(0)
-  importedTableCount    Int                 @default(0)
-  importedFieldCount    Int                 @default(0)
-  importedRecordCount   Int                 @default(0)
-  errorMessage          String?
-  description           String?
-  createdAt             DateTime            @default(now())
-  updatedAt             DateTime            @updatedAt
+  id                   String           @id @default(cuid())
+  sourceName           String
+  sourceType           String
+  ipAddress            String
+  port                 Int
+  databaseName         String?
+  sourceUsername       String?
+  assetGroupId         String
+  dataAssetId          String?
+  classificationTaskId String?
+  creatorId            String?
+  status               ImportTaskStatus @default(PENDING)
+  progress             Int              @default(0)
+  importedTableCount   Int              @default(0)
+  importedFieldCount   Int              @default(0)
+  importedRecordCount  Int              @default(0)
+  errorMessage         String?
+  description          String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
-  assetGroup            AssetGroup          @relation(fields: [assetGroupId], references: [id])
-  dataAsset             DataAsset?          @relation(fields: [dataAssetId], references: [id])
-  creator               User?               @relation(fields: [creatorId], references: [id])
-  classificationTask    ClassificationTask?
-  tables                DataAssetTable[]
+  assetGroup         AssetGroup          @relation(fields: [assetGroupId], references: [id])
+  dataAsset          DataAsset?          @relation(fields: [dataAssetId], references: [id])
+  classificationTask ClassificationTask? @relation(fields: [classificationTaskId], references: [id])
+  creator            User?               @relation(fields: [creatorId], references: [id])
+  tables             DataAssetTable[]
 
   @@index([assetGroupId])
   @@index([dataAssetId])
+  @@index([classificationTaskId])
   @@index([creatorId])
 }
 
 model DataAssetTable {
-  id              String            @id @default(cuid())
-  assetId         String
-  importTaskId    String?
-  tableName       String
-  tableComment    String?
-  engine          String?
-  rowCount        Int               @default(0)
-  sizeBytes       Int               @default(0)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id           String   @id @default(cuid())
+  assetId      String
+  importTaskId String?
+  tableName    String
+  tableComment String?
+  engine       String?
+  rowCount     Int      @default(0)
+  sizeBytes    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  asset           DataAsset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  importTask      ImportTask?       @relation(fields: [importTaskId], references: [id], onDelete: SetNull)
-  columns         DataAssetColumn[]
+  asset      DataAsset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  importTask ImportTask?       @relation(fields: [importTaskId], references: [id], onDelete: SetNull)
+  columns    DataAssetColumn[]
 
   @@unique([assetId, tableName])
   @@index([assetId])
@@ -194,24 +196,24 @@ model DataAssetTable {
 }
 
 model DataAssetColumn {
-  id                     String                  @id @default(cuid())
-  tableId                String
-  columnName             String
-  columnComment          String?
-  dataType               String
-  columnType             String
-  isNullable             Boolean                 @default(true)
-  isPrimaryKey           Boolean                 @default(false)
-  ordinalPosition        Int
-  sampleData             Json?
+  id                       String     @id @default(cuid())
+  tableId                  String
+  columnName               String
+  columnComment            String?
+  dataType                 String
+  columnType               String
+  isNullable               Boolean    @default(true)
+  isPrimaryKey             Boolean    @default(false)
+  ordinalPosition          Int
+  sampleData               Json?
   classificationDataTypeId String?
-  dataCategory           String?
-  dataLevel              DataLevel?
-  isSensitive            Boolean                 @default(false)
-  needMask               Boolean                 @default(false)
-  needEncrypt            Boolean                 @default(false)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  dataCategory             String?
+  dataLevel                DataLevel?
+  isSensitive              Boolean    @default(false)
+  needMask                 Boolean    @default(false)
+  needEncrypt              Boolean    @default(false)
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
 
   table                  DataAssetTable          @relation(fields: [tableId], references: [id], onDelete: Cascade)
   classificationDataType ClassificationDataType? @relation(fields: [classificationDataTypeId], references: [id], onDelete: SetNull)
@@ -222,120 +224,120 @@ model DataAssetColumn {
 }
 
 model AutoScanRule {
-  id               String         @id @default(cuid())
-  name             String
-  cronExpression   String?
-  assetGroupId     String?
-  sourceType       String?
-  status           ScanTaskStatus @default(DRAFT)
-  description      String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  id             String         @id @default(cuid())
+  name           String
+  cronExpression String?
+  assetGroupId   String?
+  sourceType     String?
+  status         ScanTaskStatus @default(DRAFT)
+  description    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  assetGroup       AssetGroup?    @relation(fields: [assetGroupId], references: [id])
-  results          AutoScanResult[]
+  assetGroup AssetGroup?      @relation(fields: [assetGroupId], references: [id])
+  results    AutoScanResult[]
 
   @@index([assetGroupId])
 }
 
 model AutoScanResult {
-  id              String         @id @default(cuid())
-  scanRuleId      String?
-  assetGroupId    String?
-  sourceName      String
-  sourceType      String
-  ipAddress       String
-  port            Int
-  databaseName    String?
-  owner           String?
-  department      String?
-  status          ScanTaskStatus @default(COMPLETED)
-  claimed         Boolean        @default(false)
-  ignoreReason    String?
-  ignoredAt       DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  scanRuleId   String?
+  assetGroupId String?
+  sourceName   String
+  sourceType   String
+  ipAddress    String
+  port         Int
+  databaseName String?
+  owner        String?
+  department   String?
+  status       ScanTaskStatus @default(COMPLETED)
+  claimed      Boolean        @default(false)
+  ignoreReason String?
+  ignoredAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  scanRule        AutoScanRule?  @relation(fields: [scanRuleId], references: [id])
-  assetGroup      AssetGroup?    @relation(fields: [assetGroupId], references: [id])
-  dataAsset       DataAsset?
+  scanRule   AutoScanRule? @relation(fields: [scanRuleId], references: [id])
+  assetGroup AssetGroup?   @relation(fields: [assetGroupId], references: [id])
+  dataAsset  DataAsset?
 
   @@index([scanRuleId])
   @@index([assetGroupId])
 }
 
 model ClassificationTemplate {
-  id                String                  @id @default(cuid())
-  templateName      String
-  templateType      String?
-  description       String?
-  status            TemplateStatus          @default(DRAFT)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  id           String         @id @default(cuid())
+  templateName String
+  templateType String?
+  description  String?
+  status       TemplateStatus @default(DRAFT)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  categories        ClassificationCategory[]
-  levelDefinitions  ClassificationLevelDefinition[]
-  dataTypes         ClassificationDataType[]
-  tasks             ClassificationTask[]
+  categories       ClassificationCategory[]
+  levelDefinitions ClassificationLevelDefinition[]
+  dataTypes        ClassificationDataType[]
+  tasks            ClassificationTask[]
 }
 
 model ClassificationCategory {
-  id               String                   @id @default(cuid())
-  templateId       String
-  parentId         String?
-  name             String
-  description      String?
-  sortOrder        Int                      @default(0)
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
+  id          String   @id @default(cuid())
+  templateId  String
+  parentId    String?
+  name        String
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  template         ClassificationTemplate   @relation(fields: [templateId], references: [id])
-  parent           ClassificationCategory?  @relation("ClassificationCategoryTree", fields: [parentId], references: [id])
-  children         ClassificationCategory[] @relation("ClassificationCategoryTree")
-  dataTypes        ClassificationDataType[]
+  template  ClassificationTemplate   @relation(fields: [templateId], references: [id])
+  parent    ClassificationCategory?  @relation("ClassificationCategoryTree", fields: [parentId], references: [id])
+  children  ClassificationCategory[] @relation("ClassificationCategoryTree")
+  dataTypes ClassificationDataType[]
 
   @@index([templateId])
   @@index([parentId])
 }
 
 model ClassificationLevelDefinition {
-  id              String                  @id @default(cuid())
-  templateId      String
-  code            String
-  name            String
-  color           String?
-  description     String?
-  isSensitive     Boolean                 @default(false)
-  needMask        Boolean                 @default(false)
-  needEncrypt     Boolean                 @default(false)
-  note            String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  id          String   @id @default(cuid())
+  templateId  String
+  code        String
+  name        String
+  color       String?
+  description String?
+  isSensitive Boolean  @default(false)
+  needMask    Boolean  @default(false)
+  needEncrypt Boolean  @default(false)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  template        ClassificationTemplate  @relation(fields: [templateId], references: [id])
-  dataTypes       ClassificationDataType[]
+  template  ClassificationTemplate   @relation(fields: [templateId], references: [id])
+  dataTypes ClassificationDataType[]
 
-  @@index([templateId])
   @@unique([templateId, code])
+  @@index([templateId])
 }
 
 model ClassificationDataType {
-  id                 String                          @id @default(cuid())
-  templateId         String
-  categoryId         String
-  levelDefinitionId  String?
-  name               String
-  isSensitive        Boolean                         @default(false)
-  needMask           Boolean                         @default(false)
-  needEncrypt        Boolean                         @default(false)
-  createdAt          DateTime                        @default(now())
-  updatedAt          DateTime                        @updatedAt
+  id                String   @id @default(cuid())
+  templateId        String
+  categoryId        String
+  levelDefinitionId String?
+  name              String
+  isSensitive       Boolean  @default(false)
+  needMask          Boolean  @default(false)
+  needEncrypt       Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  template           ClassificationTemplate          @relation(fields: [templateId], references: [id])
-  category           ClassificationCategory          @relation(fields: [categoryId], references: [id])
-  levelDefinition    ClassificationLevelDefinition?  @relation(fields: [levelDefinitionId], references: [id])
-  rules              ClassificationRule[]
-  importedColumns    DataAssetColumn[]
+  template        ClassificationTemplate         @relation(fields: [templateId], references: [id])
+  category        ClassificationCategory         @relation(fields: [categoryId], references: [id])
+  levelDefinition ClassificationLevelDefinition? @relation(fields: [levelDefinitionId], references: [id])
+  rules           ClassificationRule[]
+  importedColumns DataAssetColumn[]
 
   @@index([templateId])
   @@index([categoryId])
@@ -343,17 +345,17 @@ model ClassificationDataType {
 }
 
 model ClassificationRule {
-  id                String                 @id @default(cuid())
-  dataTypeId        String
-  target            String
-  matcher           String
-  value             String
-  hitRate           Decimal                @db.Decimal(5, 2)
-  sortOrder         Int                    @default(0)
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  id         String   @id @default(cuid())
+  dataTypeId String
+  target     String
+  matcher    String
+  value      String
+  hitRate    Decimal  @db.Decimal(5, 2)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  dataType          ClassificationDataType @relation(fields: [dataTypeId], references: [id])
+  dataType ClassificationDataType @relation(fields: [dataTypeId], references: [id])
 
   @@index([dataTypeId])
 }
@@ -362,6 +364,7 @@ model ClassificationTask {
   id                 String                   @id @default(cuid())
   taskName           String
   dataSource         String
+  dataAssetIds       Json?
   dataType           String
   classificationType String
   priority           String
@@ -371,38 +374,45 @@ model ClassificationTask {
   status             ClassificationTaskStatus @default(PENDING)
   templateId         String?
   creatorId          String?
-  importTaskId       String?                  @unique
+  executeAt          DateTime?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 
-  template           ClassificationTemplate?  @relation(fields: [templateId], references: [id])
-  creator            User?                    @relation(fields: [creatorId], references: [id])
-  importTask         ImportTask?              @relation(fields: [importTaskId], references: [id])
+  template    ClassificationTemplate? @relation(fields: [templateId], references: [id])
+  creator     User?                   @relation(fields: [creatorId], references: [id])
+  importTasks ImportTask[]
 
   @@index([templateId])
   @@index([creatorId])
 }
 
 model ProtectionFeature {
-  id              String                  @id @default(cuid())
-  featureType     ProtectionFeatureType
-  featureName     String
-  featureCode     String?
-  scene           String?
-  featurePoint    String
-  matcher         String
-  confidence      Int
-  priority        Int?
-  expression      String
-  sampleValue     String
-  status          ProtectionFeatureStatus @default(ACTIVE)
-  description     String?
-  creatorId       String?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  id           String                  @id @default(cuid())
+  featureType  ProtectionFeatureType
+  featureName  String
+  featureCode  String?
+  scene        String?
+  featurePoint String
+  matcher      String
+  hitRate      Int                     @map("confidence")
+  priority     Int?
+  expression   String
+  sampleValue  String
+  status       ProtectionFeatureStatus @default(ACTIVE)
+  description  String?
+  creatorId    String?
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
 
-  creator         User?                   @relation(fields: [creatorId], references: [id])
+  creator User? @relation(fields: [creatorId], references: [id])
 
   @@index([featureType])
   @@index([creatorId])
+}
+
+model AppBootstrapState {
+  key       String   @id
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

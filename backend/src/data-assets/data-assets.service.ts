@@ -40,7 +40,6 @@ export class DataAssetsService {
   }
 
   async findAll() {
-    await this.seed();
     return this.prisma.dataAsset.findMany({
       include: { assetGroup: true },
       orderBy: { createdAt: 'desc' },

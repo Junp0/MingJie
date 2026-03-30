@@ -14,7 +14,7 @@ export interface ProtectionFeatureRecord {
   matcher: ProtectionFeatureMatcher;
   expression: string;
   sampleValue: string;
-  confidence: number;
+  hitRate: number;
   priority: number;
   status: ProtectionFeatureStatus;
   description: string;
@@ -29,7 +29,7 @@ export interface ProtectionFeatureFormValues {
   matcher: ProtectionFeatureMatcher;
   expression: string;
   sampleValue: string;
-  confidence: number;
+  hitRate: number;
   priority: number;
   status: ProtectionFeatureStatus;
   description: string;
@@ -63,7 +63,7 @@ type BackendFeature = {
   matcher: string;
   expression: string;
   sampleValue: string;
-  confidence: number;
+  hitRate: number;
   priority?: number | null;
   status: 'ACTIVE' | 'INACTIVE';
   description?: string | null;
@@ -82,7 +82,7 @@ const mapFeature = (item: BackendFeature): ProtectionFeatureRecord => ({
   matcher: (item.matcher || 'regex') as ProtectionFeatureMatcher,
   expression: item.expression,
   sampleValue: item.sampleValue,
-  confidence: item.confidence,
+  hitRate: item.hitRate,
   priority: item.priority ?? 0,
   status: item.status === 'ACTIVE' ? 'active' : 'inactive',
   description: item.description ?? '',
@@ -115,7 +115,7 @@ export const createProtectionFeature = async (
       matcher: values.matcher,
       expression: values.expression.trim(),
       sampleValue: values.sampleValue.trim(),
-      confidence: values.confidence,
+      hitRate: values.hitRate,
       priority: values.priority,
       status: values.status === 'active' ? 'ACTIVE' : 'INACTIVE',
       description: values.description.trim(),
@@ -140,7 +140,7 @@ export const updateProtectionFeature = async (
       matcher: values.matcher,
       expression: values.expression.trim(),
       sampleValue: values.sampleValue.trim(),
-      confidence: values.confidence,
+      hitRate: values.hitRate,
       priority: values.priority,
       status: values.status === 'active' ? 'ACTIVE' : 'INACTIVE',
       description: values.description.trim(),
@@ -170,7 +170,7 @@ export const updateProtectionFeatureStatus = async (
     matcher: current.matcher,
     expression: current.expression,
     sampleValue: current.sampleValue,
-    confidence: current.confidence,
+    hitRate: current.hitRate,
     priority: current.priority,
     status,
     description: current.description,

@@ -70,7 +70,6 @@ export class AutoScanService {
   }
 
   async listRules() {
-    await this.seed();
     return this.prisma.autoScanRule.findMany({
       include: { assetGroup: true, results: true },
       orderBy: { createdAt: 'desc' },
@@ -78,7 +77,6 @@ export class AutoScanService {
   }
 
   async listResults() {
-    await this.seed();
     return this.prisma.autoScanResult.findMany({
       include: { scanRule: true, assetGroup: true, dataAsset: true },
       orderBy: { createdAt: 'desc' },
@@ -108,7 +106,6 @@ export class AutoScanService {
   }
 
   async executeScan() {
-    await this.seed();
     const rules = await this.prisma.autoScanRule.findMany({
       where: { status: ScanTaskStatus.RUNNING },
       orderBy: { createdAt: 'desc' },

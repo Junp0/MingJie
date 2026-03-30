@@ -1,219 +1,317 @@
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { PageContainer, ProTable } from '@ant-design/pro-components';
+import { listDataAssets } from "@/services/data-assets/dataAssetStore";
+import {
+  createClassificationTask,
+  listClassificationTasks,
+  updateClassificationTask,
+  type ClassificationTaskFormValues,
+  type ClassificationTaskRecord,
+} from "@/services/data-classification/classificationTaskStore";
+import { listClassificationTemplates } from "@/services/data-classification/templateStore";
+import type { ActionType, ProColumns } from "@ant-design/pro-components";
+import { PageContainer, ProTable } from "@ant-design/pro-components";
 import {
   Badge,
   Button,
+  DatePicker,
+  Descriptions,
   Form,
   Input,
   Modal,
   Progress,
   Select,
+  Space,
   Tag,
+  Typography,
   message,
-} from 'antd';
-import React, { useMemo, useRef, useState } from 'react';
-import {
-  createClassificationTask,
-  listClassificationTasks,
-  type ClassificationTaskFormValues,
-  type ClassificationTaskRecord,
-} from '@/services/data-classification/classificationTaskStore';
-import { listClassificationTemplates } from '@/services/data-classification/templateStore';
+} from "antd";
+import dayjs, { type Dayjs } from "dayjs";
+import React, { useRef, useState } from "react";
+
+type TaskModalFormValues = {
+  taskName: string;
+  dataType: ClassificationTaskFormValues["dataType"];
+  dataAssetIds: string[];
+  templateId?: string;
+  executeAt?: Dayjs;
+};
+
+type TaskModalMode = "create" | "edit";
+
+const DATA_TYPE_OPTIONS = [
+  { value: "database", label: "数据库" },
+  { value: "file", label: "文件" },
+  { value: "api", label: "API" },
+] as const;
+
+const STATUS_TEXT_MAP: Record<ClassificationTaskRecord["status"], string> = {
+  pending: "待执行",
+  running: "执行中",
+  completed: "已完成",
+  failed: "执行失败",
+  stopped: "已停止",
+};
+
+const STATUS_BADGE_MAP: Record<
+  ClassificationTaskRecord["status"],
+  "default" | "processing" | "success" | "error" | "warning"
+> = {
+  pending: "default",
+  running: "processing",
+  completed: "success",
+  failed: "error",
+  stopped: "warning",
+};
+
+const renderAssetTags = (assetNames: string[]) => {
+  if (!assetNames.length) return "-";
+
+  return (
+    <Space size={[0, 6]} wrap>
+      {assetNames.map((assetName) => (
+        <Tag key={assetName} color="blue" style={{ marginInlineEnd: 0 }}>
+          {assetName}
+        </Tag>
+      ))}
+    </Space>
+  );
+};
 
 const ClassificationTasks: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
-  const [form] = Form.useForm<ClassificationTaskFormValues>();
+  const [form] = Form.useForm<TaskModalFormValues>();
   const [modalOpen, setModalOpen] = useState(false);
-
-  const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [modalMode, setModalMode] = useState<TaskModalMode>("create");
+  const [submitting, setSubmitting] = useState(false);
+  const [editingTask, setEditingTask] =
+    useState<ClassificationTaskRecord | null>(null);
+  const [detailTask, setDetailTask] = useState<ClassificationTaskRecord | null>(
+    null
+  );
+  const [templateOptions, setTemplateOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [assetOptions, setAssetOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
 
   React.useEffect(() => {
-    const loadTemplateOptions = async () => {
-      const templates = await listClassificationTemplates();
-      setTemplateOptions(templates.map((template) => ({
-        value: template.id,
-        label: template.templateName,
-      })));
+    const loadOptions = async () => {
+      try {
+        const [templates, assets] = await Promise.all([
+          listClassificationTemplates(),
+          listDataAssets(),
+        ]);
+
+        setTemplateOptions(
+          templates.map((template) => ({
+            value: template.id,
+            label: template.templateName,
+          }))
+        );
+        setAssetOptions(
+          assets.map((asset) => ({
+            value: asset.id,
+            label: asset.name,
+          }))
+        );
+      } catch (error) {
+        console.error("Failed to load classification task options", error);
+        messageApi.error("任务配置项加载失败，请刷新后重试");
+      }
     };
 
-    loadTemplateOptions();
-  }, []);
+    void loadOptions();
+  }, [messageApi]);
+
+  const closeTaskModal = () => {
+    setModalOpen(false);
+    setSubmitting(false);
+    setEditingTask(null);
+    form.resetFields();
+  };
+
+  const openCreateModal = () => {
+    setModalMode("create");
+    setEditingTask(null);
+    setModalOpen(true);
+    form.setFieldsValue({
+      taskName: "",
+      dataType: "database",
+      dataAssetIds: [],
+      templateId: undefined,
+      executeAt: undefined,
+    });
+  };
+
+  const openEditModal = (record: ClassificationTaskRecord) => {
+    setModalMode("edit");
+    setEditingTask(record);
+    setModalOpen(true);
+    form.setFieldsValue({
+      taskName: record.taskName,
+      dataType: record.dataType,
+      dataAssetIds: record.dataAssetIds,
+      templateId: record.templateId,
+      executeAt: record.executeAt ? dayjs(record.executeAt) : undefined,
+    });
+  };
+
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      const payload: ClassificationTaskFormValues = {
+        taskName: values.taskName,
+        dataType: values.dataType,
+        dataAssetIds: values.dataAssetIds,
+        templateId: values.templateId,
+        executeAt: values.executeAt?.format("YYYY-MM-DD HH:mm:ss"),
+      };
+
+      setSubmitting(true);
+
+      if (modalMode === "edit" && editingTask) {
+        await updateClassificationTask(editingTask.id, payload);
+        messageApi.success("分类分级任务已更新");
+      } else {
+        await createClassificationTask(payload, {
+          taskSource: "classification-center",
+          sourceLabel: "任务中心",
+          creator: "当前用户",
+        });
+        messageApi.success("分类分级任务已创建");
+      }
+
+      closeTaskModal();
+      actionRef.current?.reload();
+    } catch (error) {
+      if (error instanceof Error && error.message) {
+        console.error(error);
+      }
+      if (!submitting) {
+        messageApi.error("请先完善任务信息");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const columns: ProColumns<ClassificationTaskRecord>[] = [
     {
-      title: '任务名称',
-      dataIndex: 'taskName',
-      valueType: 'text',
-      align: 'center',
+      title: "任务名称",
+      dataIndex: "taskName",
+      valueType: "text",
+      align: "center",
     },
     {
-      title: '任务来源',
-      dataIndex: 'sourceLabel',
-      valueType: 'select',
+      title: "数据类型",
+      dataIndex: "dataType",
+      valueType: "select",
       valueEnum: {
-        '任务中心': { text: '任务中心' },
-        '导入流程': { text: '导入流程' },
+        database: { text: "数据库" },
+        file: { text: "文件" },
+        api: { text: "API" },
+      },
+      align: "center",
+    },
+    {
+      title: "数据资产",
+      dataIndex: "dataAssetNames",
+      search: false,
+      align: "center",
+      width: 320,
+      render: (_, record) => renderAssetTags(record.dataAssetNames),
+    },
+    {
+      title: "关联模板",
+      dataIndex: "templateId",
+      valueType: "select",
+      align: "center",
+      fieldProps: {
+        options: templateOptions,
+      },
+      render: (_, record) => record.templateName || "-",
+    },
+    {
+      title: "任务执行时间",
+      dataIndex: "executeAt",
+      search: false,
+      align: "center",
+      render: (_, record) => record.executeAt || "-",
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      valueType: "select",
+      valueEnum: {
+        pending: { text: "待执行" },
+        running: { text: "执行中" },
+        completed: { text: "已完成" },
+        failed: { text: "执行失败" },
+        stopped: { text: "已停止" },
       },
       render: (_, record) => (
-        <Tag color={record.taskSource === 'asset-import' ? 'blue' : 'purple'}>{record.sourceLabel}</Tag>
+        <Badge
+          status={STATUS_BADGE_MAP[record.status] as never}
+          text={STATUS_TEXT_MAP[record.status]}
+        />
       ),
-      align: 'center',
+      align: "center",
     },
     {
-      title: '数据源',
-      dataIndex: 'dataSource',
-      valueType: 'text',
-      align: 'center',
-    },
-    {
-      title: '数据类型',
-      dataIndex: 'dataType',
-      valueType: 'select',
-      valueEnum: {
-        database: { text: '数据库' },
-        file: { text: '文件' },
-        api: { text: 'API' },
-      },
-      align: 'center',
-    },
-    {
-      title: '分类类型',
-      dataIndex: 'classificationType',
-      valueType: 'select',
-      valueEnum: {
-        automatic: { text: '自动分类' },
-        manual: { text: '人工复核' },
-        hybrid: { text: '混合分类' },
-      },
-      align: 'center',
-    },
-    {
-      title: '关联模板',
-      dataIndex: 'templateName',
-      valueType: 'text',
+      title: "进展",
+      dataIndex: "progress",
       search: false,
-      align: 'center',
-      render: (_, record) => record.templateName || '-',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      valueType: 'select',
-      valueEnum: {
-        pending: { text: '待执行' },
-        running: { text: '执行中' },
-        completed: { text: '已完成' },
-        failed: { text: '执行失败' },
-        stopped: { text: '已停止' },
-      },
-      render: (_, record) => {
-        const statusConfig = {
-          pending: { color: 'default', text: '待执行' },
-          running: { color: 'processing', text: '执行中' },
-          completed: { color: 'success', text: '已完成' },
-          failed: { color: 'error', text: '执行失败' },
-          stopped: { color: 'warning', text: '已停止' },
-        };
-        const config = statusConfig[record.status];
-        return <Badge status={config.color as never} text={config.text} />;
-      },
-      align: 'center',
-    },
-    {
-      title: '进度',
-      dataIndex: 'progress',
-      search: false,
+      align: "center",
       render: (_, record) => (
-        <div style={{ width: 120 }}>
+        <div style={{ minWidth: 140 }}>
           <Progress percent={record.progress} size="small" />
         </div>
       ),
-      align: 'center',
     },
     {
-      title: '优先级',
-      dataIndex: 'priority',
-      valueType: 'select',
-      valueEnum: {
-        high: { text: '高' },
-        medium: { text: '中' },
-        low: { text: '低' },
-      },
-      render: (_, record) => {
-        const color = record.priority === 'high' ? '#ff4d4f' : record.priority === 'medium' ? '#faad14' : '#52c41a';
-        return <Tag color={color}>{record.priority === 'high' ? '高' : record.priority === 'medium' ? '中' : '低'}</Tag>;
-      },
-      align: 'center',
-    },
-    {
-      title: '创建人',
-      dataIndex: 'creator',
-      valueType: 'text',
-      align: 'center',
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createTime',
-      valueType: 'dateTime',
+      title: "创建人",
+      dataIndex: "creator",
+      valueType: "text",
+      align: "center",
       search: false,
-      align: 'center',
     },
     {
-      title: '操作',
-      dataIndex: 'option',
-      valueType: 'option',
-      width: 180,
-      fixed: 'right',
-      render: (_, record) => (
-        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Button
-            type="link"
-            size="small"
-            style={{ padding: 0, margin: 0 }}
-            onClick={() => {
-              messageApi.info(`查看详情: ${record.taskName}`);
-            }}
-          >
-            查看详情
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            style={{ padding: 0, margin: 0 }}
-            onClick={() => {
-              messageApi.info(`编辑任务: ${record.taskName}`);
-            }}
-          >
-            编辑
-          </Button>
-        </div>
-      ),
-      align: 'center',
+      title: "创建时间",
+      dataIndex: "createTime",
+      valueType: "dateTime",
+      align: "center",
+      search: false,
+    },
+    {
+      title: "操作",
+      dataIndex: "option",
+      valueType: "option",
+      width: 160,
+      fixed: "right",
+      render: (_, record) => [
+        <Button
+          key="detail"
+          type="link"
+          size="small"
+          style={{ padding: 0 }}
+          onClick={() => setDetailTask(record)}
+        >
+          查看详情
+        </Button>,
+        <Button
+          key="edit"
+          type="link"
+          size="small"
+          style={{ padding: 0 }}
+          onClick={() => openEditModal(record)}
+        >
+          编辑
+        </Button>,
+      ],
+      align: "center",
     },
   ];
-
-  const handleCreateTask = async () => {
-    const values = await form.validateFields();
-    const selectedTemplate = templateOptions.find((item) => item.value === values.templateId);
-
-    await createClassificationTask(
-      {
-        ...values,
-        templateName: selectedTemplate?.label,
-      },
-      {
-        taskSource: 'classification-center',
-        sourceLabel: '任务中心',
-        creator: '当前用户',
-      },
-    );
-
-    messageApi.success('分类分级任务已创建');
-    setModalOpen(false);
-    form.resetFields();
-    actionRef.current?.reload();
-  };
 
   return (
     <PageContainer>
@@ -222,40 +320,31 @@ const ClassificationTasks: React.FC = () => {
         actionRef={actionRef}
         rowKey="id"
         search={{
-          labelWidth: 120,
+          labelWidth: 110,
           defaultCollapsed: true,
         }}
         toolBarRender={() => [
-          <Button
-            key="addTask"
-            type="primary"
-            onClick={() => {
-              setModalOpen(true);
-              form.setFieldsValue({
-                taskName: '',
-                dataSource: '',
-                dataType: 'database',
-                classificationType: 'automatic',
-                priority: 'medium',
-                description: '',
-              });
-            }}
-          >
+          <Button key="addTask" type="primary" onClick={openCreateModal}>
             新增任务
           </Button>,
         ]}
         request={async (params) => {
-          const { taskName, status, sourceLabel } = params;
+          const { taskName, dataType, templateId, status } = params;
           let data = await listClassificationTasks();
 
           if (taskName) {
-            data = data.filter((item) => item.taskName.includes(String(taskName)));
+            data = data.filter((item) =>
+              item.taskName.includes(String(taskName))
+            );
+          }
+          if (dataType) {
+            data = data.filter((item) => item.dataType === dataType);
+          }
+          if (templateId) {
+            data = data.filter((item) => item.templateId === templateId);
           }
           if (status) {
             data = data.filter((item) => item.status === status);
-          }
-          if (sourceLabel) {
-            data = data.filter((item) => item.sourceLabel === sourceLabel);
           }
 
           return {
@@ -272,72 +361,134 @@ const ClassificationTasks: React.FC = () => {
       />
 
       <Modal
-        title="新增分类分级任务"
+        title={modalMode === "edit" ? "编辑分类分级任务" : "新增分类分级任务"}
         open={modalOpen}
-        onOk={handleCreateTask}
-        onCancel={() => {
-          setModalOpen(false);
-          form.resetFields();
-        }}
+        onOk={handleSubmit}
+        confirmLoading={submitting}
+        onCancel={closeTaskModal}
         destroyOnClose
       >
-        <Form<ClassificationTaskFormValues> form={form} layout="vertical">
+        <Form<TaskModalFormValues> form={form} layout="vertical">
           <Form.Item
             label="任务名称"
             name="taskName"
-            rules={[{ required: true, message: '请输入任务名称' }]}
+            rules={[{ required: true, message: "请输入任务名称" }]}
           >
             <Input placeholder="请输入任务名称" />
           </Form.Item>
           <Form.Item
-            label="数据源"
-            name="dataSource"
-            rules={[{ required: true, message: '请输入数据源名称' }]}
+            label="数据类型"
+            name="dataType"
+            rules={[{ required: true, message: "请选择数据类型" }]}
           >
-            <Input placeholder="请输入数据源名称" />
+            <Select options={DATA_TYPE_OPTIONS.map((item) => ({ ...item }))} />
           </Form.Item>
-          <Form.Item label="数据类型" name="dataType" rules={[{ required: true, message: '请选择数据类型' }]}>
+          <Form.Item
+            label="数据资产"
+            name="dataAssetIds"
+            rules={[
+              {
+                required: true,
+                type: "array",
+                min: 1,
+                message: "请选择数据资产",
+              },
+            ]}
+          >
             <Select
-              options={[
-                { value: 'database', label: '数据库' },
-                { value: 'file', label: '文件' },
-                { value: 'api', label: 'API' },
-              ]}
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择一个或多个数据资产"
+              options={assetOptions}
             />
           </Form.Item>
           <Form.Item
-            label="分类方式"
-            name="classificationType"
-            rules={[{ required: true, message: '请选择分类方式' }]}
+            label="关联模板"
+            name="templateId"
+            rules={[{ required: true, message: "请选择关联模板" }]}
           >
             <Select
-              options={[
-                { value: 'automatic', label: '自动分类' },
-                { value: 'manual', label: '人工复核' },
-                { value: 'hybrid', label: '混合分类' },
-              ]}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="请选择分类分级模板"
+              options={templateOptions}
             />
           </Form.Item>
           <Form.Item
-            label="优先级"
-            name="priority"
-            rules={[{ required: true, message: '请选择优先级' }]}
+            label="任务执行时间"
+            name="executeAt"
+            rules={[{ required: true, message: "请选择任务执行时间" }]}
           >
-            <Select
-              options={[
-                { value: 'high', label: '高优先级' },
-                { value: 'medium', label: '中优先级' },
-                { value: 'low', label: '低优先级' },
-              ]}
+            <DatePicker
+              showTime
+              style={{ width: "100%" }}
+              format="YYYY-MM-DD HH:mm:ss"
+              placeholder="请选择任务执行时间"
             />
-          </Form.Item>
-          <Form.Item label="关联模板" name="templateId">
-            <Select allowClear placeholder="请选择分类分级模板" options={templateOptions} />
-          </Form.Item>
-          <Form.Item label="任务描述" name="description" rules={[{ required: true, message: '请输入任务描述' }]}>
-            <Input.TextArea rows={4} placeholder="请输入任务描述" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="任务详情"
+        open={Boolean(detailTask)}
+        footer={[
+          <Button key="close" onClick={() => setDetailTask(null)}>
+            关闭
+          </Button>,
+        ]}
+        onCancel={() => setDetailTask(null)}
+        width={760}
+      >
+        {detailTask ? (
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="任务名称">
+              {detailTask.taskName}
+            </Descriptions.Item>
+            <Descriptions.Item label="数据类型">
+              {DATA_TYPE_OPTIONS.find(
+                (item) => item.value === detailTask.dataType
+              )?.label || detailTask.dataType}
+            </Descriptions.Item>
+            <Descriptions.Item label="数据资产" span={2}>
+              {renderAssetTags(detailTask.dataAssetNames)}
+            </Descriptions.Item>
+            <Descriptions.Item label="关联模板">
+              {detailTask.templateName || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="任务执行时间">
+              {detailTask.executeAt || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="状态">
+              <Badge
+                status={STATUS_BADGE_MAP[detailTask.status] as never}
+                text={STATUS_TEXT_MAP[detailTask.status]}
+              />
+            </Descriptions.Item>
+            <Descriptions.Item label="进展">
+              <Progress percent={detailTask.progress} size="small" />
+            </Descriptions.Item>
+            <Descriptions.Item label="创建人">
+              {detailTask.creator}
+            </Descriptions.Item>
+            <Descriptions.Item label="创建时间">
+              {detailTask.createTime}
+            </Descriptions.Item>
+            <Descriptions.Item label="任务来源">
+              {detailTask.sourceLabel}
+            </Descriptions.Item>
+            <Descriptions.Item label="来源说明">
+              <Typography.Text type="secondary">
+                {detailTask.taskSource === "asset-import"
+                  ? "由导入流程自动创建"
+                  : "由任务中心手工创建"}
+              </Typography.Text>
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
       </Modal>
     </PageContainer>
   );

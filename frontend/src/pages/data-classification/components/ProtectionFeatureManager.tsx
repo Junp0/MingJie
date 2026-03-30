@@ -108,8 +108,8 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
 
   const totalCount = features.length;
   const activeCount = features.filter((feature) => feature.status === 'active').length;
-  const averageConfidence = totalCount
-    ? Math.round(features.reduce((sum, feature) => sum + feature.confidence, 0) / totalCount)
+  const averageHitRate = totalCount
+    ? Math.round(features.reduce((sum, feature) => sum + feature.hitRate, 0) / totalCount)
     : 0;
 
   const searchPlaceholder = [
@@ -132,7 +132,7 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
       matcher: 'regex',
       expression: '',
       sampleValue: '',
-      confidence: 85,
+      hitRate: 85,
       priority: defaultPriority,
       status: 'active',
       description: '',
@@ -150,7 +150,7 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
       matcher: feature.matcher,
       expression: feature.expression,
       sampleValue: feature.sampleValue,
-      confidence: feature.confidence,
+      hitRate: feature.hitRate,
       priority: feature.priority,
       status: feature.status,
       description: feature.description,
@@ -333,9 +333,9 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
       ),
     },
     {
-      title: '置信度',
-      dataIndex: 'confidence',
-      key: 'confidence',
+      title: '命中率',
+      dataIndex: 'hitRate',
+      key: 'hitRate',
       width: 100,
       render: (value: number) => `${value}%`,
     },
@@ -412,7 +412,7 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
         </Col>
         <Col xs={24} md={8}>
           <Card>
-            <Statistic title="平均置信度" value={averageConfidence} suffix="%" />
+            <Statistic title="平均命中率" value={averageHitRate} suffix="%" />
           </Card>
         </Col>
       </Row>
@@ -553,9 +553,9 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
             </Col>
             <Col span={8}>
               <Form.Item
-                label="置信度"
-                name="confidence"
-                rules={[{ required: true, message: '请输入置信度' }]}
+                label="命中率"
+                name="hitRate"
+                rules={[{ required: true, message: '请输入命中率' }]}
               >
                 <InputNumber min={0} max={100} precision={0} style={{ width: '100%' }} />
               </Form.Item>

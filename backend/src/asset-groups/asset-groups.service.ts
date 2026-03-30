@@ -31,7 +31,6 @@ export class AssetGroupsService {
   }
 
   async findAll() {
-    await this.seed();
     return this.prisma.assetGroup.findMany({
       orderBy: [{ level: 'asc' }, { createdAt: 'asc' }],
     });

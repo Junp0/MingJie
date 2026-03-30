@@ -515,7 +515,6 @@ export class ClassificationTemplatesService {
   }
 
   async findAll() {
-    await this.seed();
     return this.prisma.classificationTemplate.findMany({
       include: this.getInclude(),
       orderBy: { createdAt: 'desc' },
@@ -523,7 +522,6 @@ export class ClassificationTemplatesService {
   }
 
   async findOne(id: string) {
-    await this.seed();
     return this.prisma.classificationTemplate.findUnique({
       where: { id },
       include: this.getInclude(),

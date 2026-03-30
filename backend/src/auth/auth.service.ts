@@ -38,8 +38,6 @@ export class AuthService {
   }
 
   async login(payload: LoginDto) {
-    await this.seedDefaultUsers();
-
     if (payload.type === 'mobile') {
       const user = await this.prisma.user.findFirst({
         where: { role: UserRole.ADMIN, status: CommonStatus.ACTIVE },
@@ -72,7 +70,6 @@ export class AuthService {
   }
 
   async currentUser() {
-    await this.seedDefaultUsers();
     const user = await this.prisma.user.findUnique({ where: { username: 'admin' } });
 
     return {

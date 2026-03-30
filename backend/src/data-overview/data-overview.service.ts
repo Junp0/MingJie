@@ -8,6 +8,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 type OverviewDataLevel = 'public' | 'internal' | 'confidential' | 'secret';
+type ProtectionStatus = 'not_required' | 'recommended' | 'confirmed';
+type FeatureMatcherConfig = {
+  matcher: string;
+  expression: string;
+  hitRate: number;
+};
 
 export interface OverviewFieldRecord {
   id: string;
@@ -18,8 +24,8 @@ export interface OverviewFieldRecord {
   dataCategory: string;
   dataLevel: OverviewDataLevel;
   isSensitive: boolean;
-  isDesensitized: boolean;
-  isEncrypted: boolean;
+  maskingStatus: ProtectionStatus;
+  encryptionStatus: ProtectionStatus;
   groupName: string;
   sampleData: string[];
   updateTime: string;
@@ -44,8 +50,8 @@ export interface TableFieldRecord {
   dataCategory: string;
   dataLevel: OverviewDataLevel;
   isSensitive: boolean;
-  isDesensitized: boolean;
-  isEncrypted: boolean;
+  maskingStatus: ProtectionStatus;
+  encryptionStatus: ProtectionStatus;
   groupName: string;
   sampleData: string[];
   updateTime: string;
@@ -166,8 +172,91 @@ export class DataOverviewService {
     return ['sample_value'];
   }
 
+  private matchProtectionFeatureValue(value: string, matcher: string, expected: string) {
+    const normalizedValue = value.toLowerCase();
+    const normalizedExpected = expected.toLowerCase();
+
+    switch (matcher) {
+      case 'equals':
+        return normalizedValue === normalizedExpected;
+      case 'contains':
+      case 'enumContains':
+        return normalizedExpected
+          .split(',')
+          .map((item) => item.trim())
+          .some((item) => item && normalizedValue.includes(item));
+      case 'prefix':
+        return normalizedValue.startsWith(normalizedExpected);
+      case 'suffix':
+        return normalizedValue.endsWith(normalizedExpected);
+      case 'regex':
+        try {
+          return new RegExp(expected, 'i').test(value);
+        } catch {
+          return false;
+        }
+      default:
+        return false;
+    }
+  }
+
+  private resolveProtectionStatus(
+    recommended: boolean,
+    sampleData: string[],
+    features: FeatureMatcherConfig[],
+  ): ProtectionStatus {
+    if (!recommended) {
+      return 'not_required';
+    }
+
+    const normalizedSamples = sampleData
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    const bestHitRate = normalizedSamples.length
+      ? features.reduce((bestRate, feature) => {
+          const matchedCount = normalizedSamples.filter((sample) =>
+            this.matchProtectionFeatureValue(sample, feature.matcher, feature.expression),
+          ).length;
+          const currentRate = (matchedCount / normalizedSamples.length) * 100;
+
+          return currentRate > feature.hitRate && currentRate > bestRate
+            ? currentRate
+            : bestRate;
+        }, 0)
+      : 0;
+
+    return bestHitRate > 0 ? 'confirmed' : 'recommended';
+  }
+
+  private async getActiveProtectionFeatures() {
+    const [maskingFeatures, encryptionFeatures] = await Promise.all([
+      this.prisma.protectionFeature.findMany({
+        where: {
+          featureType: ProtectionFeatureType.MASKING,
+          status: 'ACTIVE',
+        },
+        orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+      }),
+      this.prisma.protectionFeature.findMany({
+        where: {
+          featureType: ProtectionFeatureType.ENCRYPTION,
+          status: 'ACTIVE',
+        },
+        orderBy: [{ priority: 'asc' }, { createdAt: 'desc' }],
+      }),
+    ]);
+
+    return {
+      maskingFeatures,
+      encryptionFeatures,
+      primaryMaskingFeature: maskingFeatures[0] ?? null,
+      primaryEncryptionFeature: encryptionFeatures[0] ?? null,
+    };
+  }
+
   private async getOverviewContext() {
-    const [assets, templates, maskingFeature, encryptionFeature, scanResults] = await Promise.all([
+    const [assets, templates, scanResults, protectionFeatures] = await Promise.all([
       this.prisma.dataAsset.findMany({
         include: { assetGroup: true },
         orderBy: { createdAt: 'desc' },
@@ -184,24 +273,11 @@ export class DataOverviewService {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.protectionFeature.findFirst({
-        where: {
-          featureType: ProtectionFeatureType.MASKING,
-          status: 'ACTIVE',
-        },
-        orderBy: { priority: 'asc' },
-      }),
-      this.prisma.protectionFeature.findFirst({
-        where: {
-          featureType: ProtectionFeatureType.ENCRYPTION,
-          status: 'ACTIVE',
-        },
-        orderBy: { priority: 'asc' },
-      }),
       this.prisma.autoScanResult.findMany({
         include: { assetGroup: true, dataAsset: true },
         orderBy: { createdAt: 'desc' },
       }),
+      this.getActiveProtectionFeatures(),
     ]);
 
     const template =
@@ -210,8 +286,10 @@ export class DataOverviewService {
     return {
       assets,
       template,
-      maskingFeature,
-      encryptionFeature,
+      maskingFeatures: protectionFeatures.maskingFeatures,
+      encryptionFeatures: protectionFeatures.encryptionFeatures,
+      primaryMaskingFeature: protectionFeatures.primaryMaskingFeature,
+      primaryEncryptionFeature: protectionFeatures.primaryEncryptionFeature,
       scanResults,
     };
   }
@@ -232,7 +310,14 @@ export class DataOverviewService {
   }
 
   private async buildFullDataRecords(): Promise<OverviewFieldRecord[]> {
-    const { assets, template, maskingFeature, encryptionFeature } = await this.getOverviewContext();
+    const {
+      assets,
+      template,
+      maskingFeatures,
+      encryptionFeatures,
+      primaryMaskingFeature,
+      primaryEncryptionFeature,
+    } = await this.getOverviewContext();
 
     const templateDataTypes = template?.dataTypes ?? [];
 
@@ -255,6 +340,11 @@ export class DataOverviewService {
 
       return effectiveDataTypes.map((dataType, index) => {
         const fieldName = this.inferFieldName(dataType.name, index);
+        const sampleData = this.buildSampleData(
+          fieldName,
+          primaryMaskingFeature?.sampleValue ?? undefined,
+          primaryEncryptionFeature?.sampleValue ?? undefined,
+        );
         const status =
           asset.status === CommonStatus.ACTIVE
             ? 'active'
@@ -275,14 +365,18 @@ export class DataOverviewService {
             dataType.needEncrypt,
           ),
           isSensitive: dataType.isSensitive,
-          isDesensitized: dataType.needMask,
-          isEncrypted: dataType.needEncrypt,
-          groupName: asset.assetGroup?.name ?? '',
-          sampleData: this.buildSampleData(
-            fieldName,
-            maskingFeature?.sampleValue ?? undefined,
-            encryptionFeature?.sampleValue ?? undefined,
+          maskingStatus: this.resolveProtectionStatus(
+            dataType.needMask,
+            sampleData,
+            maskingFeatures,
           ),
+          encryptionStatus: this.resolveProtectionStatus(
+            dataType.needEncrypt,
+            sampleData,
+            encryptionFeatures,
+          ),
+          groupName: asset.assetGroup?.name ?? '',
+          sampleData,
           updateTime: this.formatDateTime(asset.updatedAt),
           status,
         } satisfies OverviewFieldRecord;
@@ -291,30 +385,43 @@ export class DataOverviewService {
   }
 
   async listFullData() {
+    const { maskingFeatures, encryptionFeatures } = await this.getActiveProtectionFeatures();
     const importedAssets = await this.getImportedAssets();
     const importedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) =>
-        table.columns.map((column) => ({
-          id: column.id,
-          fieldName: column.columnName,
-          fieldComment: column.columnComment ?? '',
-          fieldTable: table.tableName,
-          dataType: column.columnType,
-          dataCategory: column.dataCategory ?? '未分类',
-          dataLevel: this.mapPersistedLevel(column.dataLevel),
-          isSensitive: column.isSensitive,
-          isDesensitized: column.needMask,
-          isEncrypted: column.needEncrypt,
-          groupName: asset.assetGroup?.name ?? '',
-          sampleData: Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [],
-          updateTime: this.formatDateTime(column.updatedAt),
-          status:
-            asset.status === CommonStatus.ACTIVE
-              ? 'active'
-              : asset.status === CommonStatus.INACTIVE
-                ? 'processing'
-                : 'inactive',
-        } satisfies OverviewFieldRecord)),
+        table.columns.map((column) => {
+          const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+
+          return {
+            id: column.id,
+            fieldName: column.columnName,
+            fieldComment: column.columnComment ?? '',
+            fieldTable: table.tableName,
+            dataType: column.columnType,
+            dataCategory: column.dataCategory ?? '未分类',
+            dataLevel: this.mapPersistedLevel(column.dataLevel),
+            isSensitive: column.isSensitive,
+            maskingStatus: this.resolveProtectionStatus(
+              column.needMask,
+              sampleData,
+              maskingFeatures,
+            ),
+            encryptionStatus: this.resolveProtectionStatus(
+              column.needEncrypt,
+              sampleData,
+              encryptionFeatures,
+            ),
+            groupName: asset.assetGroup?.name ?? '',
+            sampleData,
+            updateTime: this.formatDateTime(column.updatedAt),
+            status:
+              asset.status === CommonStatus.ACTIVE
+                ? 'active'
+                : asset.status === CommonStatus.INACTIVE
+                  ? 'processing'
+                  : 'inactive',
+          } satisfies OverviewFieldRecord;
+        }),
       ),
     );
 
@@ -326,6 +433,7 @@ export class DataOverviewService {
   }
 
   async listMissedData() {
+    const { maskingFeatures, encryptionFeatures } = await this.getActiveProtectionFeatures();
     const importedAssets = await this.getImportedAssets();
     const importedMissedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) =>
@@ -334,6 +442,7 @@ export class DataOverviewService {
           .map((column, index) => {
             const priority = index % 3 === 0 ? 'high' : index % 3 === 1 ? 'medium' : 'low';
             const missRate = Math.min(95, 25 + index * 6);
+            const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
             return {
               id: column.id,
               fieldName: column.columnName,
@@ -343,8 +452,16 @@ export class DataOverviewService {
               dataCategory: column.dataCategory ?? '未分类',
               dataLevel: this.mapPersistedLevel(column.dataLevel),
               isSensitive: column.isSensitive,
-              isDesensitized: column.needMask,
-              isEncrypted: column.needEncrypt,
+              maskingStatus: this.resolveProtectionStatus(
+                column.needMask,
+                sampleData,
+                maskingFeatures,
+              ),
+              encryptionStatus: this.resolveProtectionStatus(
+                column.needEncrypt,
+                sampleData,
+                encryptionFeatures,
+              ),
               groupName: asset.assetGroup?.name ?? '',
               key: `${asset.ipAddress}:${asset.port}:${table.tableName}:${column.columnName}`,
               missCount: 10 + index * 3,
@@ -353,7 +470,7 @@ export class DataOverviewService {
               status: priority,
               source: '真实导入',
               priority,
-              sampleData: Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [],
+              sampleData,
               updateTime: this.formatDateTime(column.updatedAt),
             } satisfies MissedDataRecord;
           }),
@@ -381,8 +498,8 @@ export class DataOverviewService {
           dataCategory: '待治理资产',
           dataLevel: 'internal',
           isSensitive: false,
-          isDesensitized: false,
-          isEncrypted: false,
+          maskingStatus: 'not_required',
+          encryptionStatus: 'not_required',
           groupName: item.assetGroup?.name ?? '未分组',
           key: `${item.ipAddress}:${item.port}`,
           missCount: 10 + index * 5,
@@ -398,6 +515,7 @@ export class DataOverviewService {
   }
 
   async listTableData() {
+    const { maskingFeatures, encryptionFeatures } = await this.getActiveProtectionFeatures();
     const importedAssets = await this.getImportedAssets();
     const importedDatabases = importedAssets.filter((asset) => asset.tables.length > 0);
     if (importedDatabases.length > 0) {
@@ -428,24 +546,36 @@ export class DataOverviewService {
               asset.status === CommonStatus.ARCHIVED
                 ? 'maintenance'
                 : asset.status === CommonStatus.ACTIVE
-                  ? 'online'
-                  : 'offline',
+              ? 'online'
+              : 'offline',
             lastSyncTime: this.formatDateTime(table.updatedAt),
             syncStatus: 'success',
-            fields: table.columns.map((column) => ({
-              id: column.id,
-              fieldName: column.columnName,
-              fieldComment: column.columnComment ?? '',
-              dataType: column.columnType,
-              dataCategory: column.dataCategory ?? '未分类',
-              dataLevel: this.mapPersistedLevel(column.dataLevel),
-              isSensitive: column.isSensitive,
-              isDesensitized: column.needMask,
-              isEncrypted: column.needEncrypt,
-              groupName: asset.assetGroup?.name ?? '',
-              sampleData: Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [],
-              updateTime: this.formatDateTime(column.updatedAt),
-            })),
+            fields: table.columns.map((column) => {
+              const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+
+              return {
+                id: column.id,
+                fieldName: column.columnName,
+                fieldComment: column.columnComment ?? '',
+                dataType: column.columnType,
+                dataCategory: column.dataCategory ?? '未分类',
+                dataLevel: this.mapPersistedLevel(column.dataLevel),
+                isSensitive: column.isSensitive,
+                maskingStatus: this.resolveProtectionStatus(
+                  column.needMask,
+                  sampleData,
+                  maskingFeatures,
+                ),
+                encryptionStatus: this.resolveProtectionStatus(
+                  column.needEncrypt,
+                  sampleData,
+                  encryptionFeatures,
+                ),
+                groupName: asset.assetGroup?.name ?? '',
+                sampleData,
+                updateTime: this.formatDateTime(column.updatedAt),
+              };
+            }),
           })),
         } satisfies DatabaseRecord)),
       } satisfies DatabaseInstanceRecord));
@@ -466,8 +596,8 @@ export class DataOverviewService {
         dataCategory: field.dataCategory,
         dataLevel: field.dataLevel,
         isSensitive: field.isSensitive,
-        isDesensitized: field.isDesensitized,
-        isEncrypted: field.isEncrypted,
+        maskingStatus: field.maskingStatus,
+        encryptionStatus: field.encryptionStatus,
         groupName: field.groupName,
         sampleData: field.sampleData,
         updateTime: field.updateTime,

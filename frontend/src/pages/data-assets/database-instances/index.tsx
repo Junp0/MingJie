@@ -1,14 +1,14 @@
-import type { ActionType, ProColumns } from '@ant-design/pro-components';
-import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { useNavigate } from '@umijs/max';
-import { Button, Input, Modal, Progress, Tag, message } from 'antd';
-import React, { useRef, useState } from 'react';
 import {
   deleteImportTask,
   listImportTasks,
   updateImportTaskStatus,
   type DataAssetImportRecord,
-} from '@/services/data-assets/importTaskStore';
+} from "@/services/data-assets/importTaskStore";
+import type { ActionType, ProColumns } from "@ant-design/pro-components";
+import { PageContainer, ProTable } from "@ant-design/pro-components";
+import { useNavigate } from "@umijs/max";
+import { Button, Input, Modal, Progress, Tag, message } from "antd";
+import React, { useRef, useState } from "react";
 
 const { Search } = Input;
 
@@ -16,106 +16,124 @@ const DataAssetImport: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const navigate = useNavigate();
   const [messageApi, contextHolder] = message.useMessage();
-  const [globalSearchValue, setGlobalSearchValue] = useState('');
+  const [globalSearchValue, setGlobalSearchValue] = useState("");
 
   const columns: ProColumns<DataAssetImportRecord>[] = [
     {
-      title: '数据源类型',
-      dataIndex: 'sourceType',
+      title: "数据源类型",
+      dataIndex: "sourceType",
       search: false,
       render: (_, record) => {
         const typeMap = {
-          database: { text: record.databaseType || '数据库', color: 'blue' },
-          file: { text: record.databaseType || '文件', color: 'green' },
-          api: { text: record.databaseType || 'API', color: 'orange' },
-          message_queue: { text: record.databaseType || '消息队列', color: 'purple' },
+          database: { text: record.databaseType || "数据库", color: "blue" },
+          file: { text: record.databaseType || "文件", color: "green" },
+          api: { text: record.databaseType || "API", color: "orange" },
+          message_queue: {
+            text: record.databaseType || "消息队列",
+            color: "purple",
+          },
         };
         const type = typeMap[record.sourceType];
         return <Tag color={type.color}>{type.text}</Tag>;
       },
-      align: 'center',
+      align: "center",
     },
     {
-      title: '数据资产名称',
-      dataIndex: 'sourceName',
+      title: "数据资产名称",
+      dataIndex: "sourceName",
       search: false,
-      align: 'center',
+      align: "center",
     },
     {
-      title: '接入地址',
-      dataIndex: 'ipAddress',
+      title: "接入地址",
+      dataIndex: "ipAddress",
       search: false,
-      align: 'center',
+      align: "center",
     },
     {
-      title: '端口号',
-      dataIndex: 'port',
+      title: "端口号",
+      dataIndex: "port",
       search: false,
-      align: 'center',
+      align: "center",
     },
     {
-      title: '状态',
-      dataIndex: 'status',
+      title: "状态",
+      dataIndex: "status",
       search: false,
       render: (_, record) => {
         const statusMap = {
-          pending: { color: 'default', text: '等待中' },
-          running: { color: 'blue', text: '运行中' },
-          completed: { color: 'green', text: '已完成' },
-          failed: { color: 'red', text: '失败' },
-          stopped: { color: 'orange', text: '已停止' },
+          pending: { color: "default", text: "等待中" },
+          running: { color: "blue", text: "运行中" },
+          completed: { color: "green", text: "已完成" },
+          failed: { color: "red", text: "失败" },
+          stopped: { color: "orange", text: "已停止" },
         };
         const status = statusMap[record.status];
         return <Tag color={status.color}>{status.text}</Tag>;
       },
-      align: 'center',
+      align: "center",
     },
     {
-      title: '进度',
-      dataIndex: 'progress',
+      title: "进度",
+      dataIndex: "progress",
       search: false,
       width: 120,
       render: (_, record) => (
-        <Progress percent={record.progress} size="small" status={record.status === 'failed' ? 'exception' : undefined} />
+        <Progress
+          percent={record.progress}
+          size="small"
+          status={record.status === "failed" ? "exception" : undefined}
+        />
       ),
-      align: 'center',
+      align: "center",
     },
     {
-      title: '资产分组',
-      dataIndex: 'assetGroupName',
+      title: "资产分组",
+      dataIndex: "assetGroupName",
       search: false,
-      align: 'center',
-      render: (_, record) => record.assetGroupName || '-',
+      align: "center",
+      render: (_, record) => record.assetGroupName || "-",
     },
     {
-      title: '创建人',
-      dataIndex: 'creator',
+      title: "创建人",
+      dataIndex: "creator",
       search: false,
-      align: 'center',
+      align: "center",
     },
     {
-      title: '分类任务',
-      dataIndex: 'classificationTaskEnabled',
+      title: "分类任务",
+      dataIndex: "classificationTaskEnabled",
       search: false,
-      align: 'center',
+      align: "center",
       render: (_, record) =>
-        record.classificationTaskEnabled ? <Tag color="processing">已创建</Tag> : <Tag>未创建</Tag>,
+        record.classificationTaskEnabled ? (
+          <Tag color="processing">已关联</Tag>
+        ) : (
+          <Tag>未关联</Tag>
+        ),
     },
     {
-      title: '最后同步时间',
-      dataIndex: 'lastSyncTime',
+      title: "最后同步时间",
+      dataIndex: "lastSyncTime",
       search: false,
-      align: 'center',
-      render: (_, record) => record.lastSyncTime || '-',
+      align: "center",
+      render: (_, record) => record.lastSyncTime || "-",
     },
     {
-      title: '操作',
-      dataIndex: 'option',
-      valueType: 'option',
+      title: "操作",
+      dataIndex: "option",
+      valueType: "option",
       width: 200,
-      fixed: 'right',
+      fixed: "right",
       render: (_, record) => (
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            justifyContent: "center",
+            flexWrap: "wrap",
+          }}
+        >
           <Button
             type="link"
             size="small"
@@ -124,13 +142,13 @@ const DataAssetImport: React.FC = () => {
           >
             查看详情
           </Button>
-          {record.status === 'pending' || record.status === 'stopped' ? (
+          {record.status === "pending" || record.status === "stopped" ? (
             <Button
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
               onClick={async () => {
-                await updateImportTaskStatus(record.id, 'running');
+                await updateImportTaskStatus(record.id, "running");
                 messageApi.success(`已启动：${record.sourceName}`);
                 actionRef.current?.reload();
               }}
@@ -138,15 +156,20 @@ const DataAssetImport: React.FC = () => {
               启动
             </Button>
           ) : null}
-          {record.status === 'running' ? (
+          {record.status === "running" ? (
             <Button
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
               onClick={async () => {
-                const updated = await updateImportTaskStatus(record.id, 'completed');
+                const updated = await updateImportTaskStatus(
+                  record.id,
+                  "completed"
+                );
                 if (updated?.classificationTaskId) {
-                  messageApi.success(`导入已完成，并已自动启动关联分类分级任务`);
+                  messageApi.success(
+                    `导入已完成，并已自动启动关联分类分级任务`
+                  );
                 } else {
                   messageApi.success(`导入已完成：${record.sourceName}`);
                 }
@@ -156,13 +179,13 @@ const DataAssetImport: React.FC = () => {
               完成
             </Button>
           ) : null}
-          {record.status === 'running' ? (
+          {record.status === "running" ? (
             <Button
               type="link"
               size="small"
               style={{ padding: 0, margin: 0 }}
               onClick={async () => {
-                await updateImportTaskStatus(record.id, 'stopped');
+                await updateImportTaskStatus(record.id, "stopped");
                 messageApi.success(`已停止：${record.sourceName}`);
                 actionRef.current?.reload();
               }}
@@ -177,11 +200,11 @@ const DataAssetImport: React.FC = () => {
             style={{ padding: 0, margin: 0 }}
             onClick={() => {
               Modal.confirm({
-                title: '确认删除导入任务',
+                title: "确认删除导入任务",
                 content:
-                  '删除导入任务会自动删除对应数据资产和分类分级结果，确认后按照提示内容执行删除动作，且不可恢复。',
-                okText: '确认删除',
-                cancelText: '取消',
+                  "删除导入任务会自动删除对应数据资产，并解除或清理关联的分类分级任务关系；如果该分类任务仅由本次导入创建且不再关联其他资产，也会一并删除。",
+                okText: "确认删除",
+                cancelText: "取消",
                 okButtonProps: { danger: true },
                 onOk: async () => {
                   await deleteImportTask(record.id);
@@ -195,7 +218,7 @@ const DataAssetImport: React.FC = () => {
           </Button>
         </div>
       ),
-      align: 'center',
+      align: "center",
     },
   ];
 
@@ -221,7 +244,7 @@ const DataAssetImport: React.FC = () => {
           <Button
             key="add"
             type="primary"
-            onClick={() => navigate('/data-assets/data-import-form')}
+            onClick={() => navigate("/data-assets/data-import-form")}
           >
             新增任务
           </Button>,
@@ -231,9 +254,15 @@ const DataAssetImport: React.FC = () => {
 
           if (globalSearchValue) {
             data = data.filter((item) =>
-              [item.sourceName, item.ipAddress, item.creator, item.assetGroupName, item.description]
-                .join(' ')
-                .includes(globalSearchValue),
+              [
+                item.sourceName,
+                item.ipAddress,
+                item.creator,
+                item.assetGroupName,
+                item.description,
+              ]
+                .join(" ")
+                .includes(globalSearchValue)
             );
           }
 
@@ -249,7 +278,7 @@ const DataAssetImport: React.FC = () => {
           showSizeChanger: true,
         }}
         tableStyle={{
-          textAlign: 'center',
+          textAlign: "center",
         }}
       />
     </PageContainer>

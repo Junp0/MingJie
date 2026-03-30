@@ -46,7 +46,15 @@ export class CreateImportTaskDto {
   @IsString()
   creatorId?: string;
 
-  @ApiPropertyOptional({ enum: ImportTaskStatus, default: ImportTaskStatus.PENDING })
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  classificationTaskId?: string;
+
+  @ApiPropertyOptional({
+    enum: ImportTaskStatus,
+    default: ImportTaskStatus.PENDING,
+  })
   @IsOptional()
   @IsEnum(ImportTaskStatus)
   status?: ImportTaskStatus;

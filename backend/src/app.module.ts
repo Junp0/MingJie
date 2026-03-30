@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AppInitializationService } from './app-initialization.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -29,5 +30,6 @@ import { DataOverviewModule } from './data-overview/data-overview.module';
     ClassificationTemplateDetailsModule,
     DataOverviewModule,
   ],
+  providers: [AppInitializationService],
 })
 export class AppModule {}

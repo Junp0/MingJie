@@ -1,7 +1,7 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { Badge, Button, Drawer, Table, Tag, message } from 'antd';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   listMissedDataItems,
   type MissedDataItem,
@@ -16,27 +16,9 @@ interface SampleDataItem {
 const MissedDataList: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
-  const [rows, setRows] = useState<MissedDataItem[]>([]);
   const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
   const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
   const [currentFieldName, setCurrentFieldName] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadRows = async () => {
-      const data = await listMissedDataItems();
-      if (!cancelled) {
-        setRows(data);
-      }
-    };
-
-    void loadRows();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const sampleColumns = [
     { title: '序号', dataIndex: 'id', key: 'id', width: 80 },
@@ -173,32 +155,42 @@ const MissedDataList: React.FC = () => {
           </Button>,
         ]}
         request={async (params) => {
-          const {
-            fieldName,
-            fieldComment,
-            fieldTable,
-            dataType,
-            groupName,
-            status,
-            priority,
-            source,
-          } = params as Record<string, any>;
+          try {
+            const {
+              fieldName,
+              fieldComment,
+              fieldTable,
+              dataType,
+              groupName,
+              status,
+              priority,
+              source,
+            } = params as Record<string, any>;
 
-          let filteredData = rows;
-          if (fieldName) filteredData = filteredData.filter((item) => item.fieldName.includes(String(fieldName)));
-          if (fieldComment) filteredData = filteredData.filter((item) => item.fieldComment.includes(String(fieldComment)));
-          if (fieldTable) filteredData = filteredData.filter((item) => item.fieldTable.includes(String(fieldTable)));
-          if (dataType) filteredData = filteredData.filter((item) => item.dataType === dataType);
-          if (groupName) filteredData = filteredData.filter((item) => item.groupName === groupName);
-          if (status) filteredData = filteredData.filter((item) => item.status === status);
-          if (priority) filteredData = filteredData.filter((item) => item.priority === priority);
-          if (source) filteredData = filteredData.filter((item) => item.source === source);
+            const rows = await listMissedDataItems();
+            let filteredData = rows;
+            if (fieldName) filteredData = filteredData.filter((item) => item.fieldName.includes(String(fieldName)));
+            if (fieldComment) filteredData = filteredData.filter((item) => item.fieldComment.includes(String(fieldComment)));
+            if (fieldTable) filteredData = filteredData.filter((item) => item.fieldTable.includes(String(fieldTable)));
+            if (dataType) filteredData = filteredData.filter((item) => item.dataType === dataType);
+            if (groupName) filteredData = filteredData.filter((item) => item.groupName === groupName);
+            if (status) filteredData = filteredData.filter((item) => item.status === status);
+            if (priority) filteredData = filteredData.filter((item) => item.priority === priority);
+            if (source) filteredData = filteredData.filter((item) => item.source === source);
 
-          return {
-            data: filteredData,
-            success: true,
-            total: filteredData.length,
-          };
+            return {
+              data: filteredData,
+              success: true,
+              total: filteredData.length,
+            };
+          } catch {
+            messageApi.error('加载未命中数据列表失败');
+            return {
+              data: [],
+              success: false,
+              total: 0,
+            };
+          }
         }}
         columns={columns}
         pagination={{

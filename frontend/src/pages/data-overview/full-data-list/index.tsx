@@ -1,10 +1,11 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { Button, Drawer, Table, Tag, message } from 'antd';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   listFullDataItems,
   type FullDataItem,
+  type ProtectionStatus,
 } from '@/services/data-overview/overviewStore';
 
 interface SampleDataItem {
@@ -13,30 +14,18 @@ interface SampleDataItem {
   updateTime: string;
 }
 
+const protectionStatusMap: Record<ProtectionStatus, { color: string; text: string }> = {
+  not_required: { color: 'default', text: '无需' },
+  recommended: { color: 'orange', text: '建议' },
+  confirmed: { color: 'green', text: '确认' },
+};
+
 const FullDataList: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
-  const [rows, setRows] = useState<FullDataItem[]>([]);
   const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
   const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
   const [currentFieldName, setCurrentFieldName] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadRows = async () => {
-      const data = await listFullDataItems();
-      if (!cancelled) {
-        setRows(data);
-      }
-    };
-
-    void loadRows();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const sampleColumns = [
     {
@@ -103,16 +92,34 @@ const FullDataList: React.FC = () => {
     },
     { title: '所属分组', dataIndex: 'groupName', align: 'center', valueType: 'text' },
     {
-      title: '是否脱敏',
-      dataIndex: 'isDesensitized',
+      title: '脱敏情况',
+      dataIndex: 'maskingStatus',
       align: 'center',
-      render: (_, record) => <Tag color={record.isDesensitized ? 'green' : 'default'}>{record.isDesensitized ? '是' : '否'}</Tag>,
+      valueType: 'select',
+      valueEnum: {
+        not_required: { text: '无需脱敏' },
+        recommended: { text: '建议脱敏' },
+        confirmed: { text: '确认脱敏' },
+      },
+      render: (_, record) => {
+        const protectionStatus = protectionStatusMap[record.maskingStatus];
+        return <Tag color={protectionStatus.color}>{protectionStatus.text}脱敏</Tag>;
+      },
     },
     {
-      title: '是否加密',
-      dataIndex: 'isEncrypted',
+      title: '加密情况',
+      dataIndex: 'encryptionStatus',
       align: 'center',
-      render: (_, record) => <Tag color={record.isEncrypted ? 'green' : 'default'}>{record.isEncrypted ? '是' : '否'}</Tag>,
+      valueType: 'select',
+      valueEnum: {
+        not_required: { text: '无需加密' },
+        recommended: { text: '建议加密' },
+        confirmed: { text: '确认加密' },
+      },
+      render: (_, record) => {
+        const protectionStatus = protectionStatusMap[record.encryptionStatus];
+        return <Tag color={protectionStatus.color}>{protectionStatus.text}加密</Tag>;
+      },
     },
     {
       title: '样本',
@@ -157,36 +164,46 @@ const FullDataList: React.FC = () => {
           </Button>,
         ]}
         request={async (params) => {
-          const {
-            fieldName,
-            fieldComment,
-            fieldTable,
-            dataType,
-            dataCategory,
-            dataLevel,
-            isSensitive,
-            isDesensitized,
-            isEncrypted,
-            groupName,
-          } = params as Record<string, any>;
+          try {
+            const {
+              fieldName,
+              fieldComment,
+              fieldTable,
+              dataType,
+              dataCategory,
+              dataLevel,
+              isSensitive,
+              maskingStatus,
+              encryptionStatus,
+              groupName,
+            } = params as Record<string, any>;
 
-          let filteredData = rows;
-          if (fieldName) filteredData = filteredData.filter((item) => item.fieldName.includes(String(fieldName)));
-          if (fieldComment) filteredData = filteredData.filter((item) => item.fieldComment.includes(String(fieldComment)));
-          if (fieldTable) filteredData = filteredData.filter((item) => item.fieldTable.includes(String(fieldTable)));
-          if (dataType) filteredData = filteredData.filter((item) => item.dataType === dataType);
-          if (dataCategory) filteredData = filteredData.filter((item) => item.dataCategory === dataCategory);
-          if (dataLevel) filteredData = filteredData.filter((item) => item.dataLevel === dataLevel);
-          if (isSensitive !== undefined) filteredData = filteredData.filter((item) => item.isSensitive === (isSensitive === true || isSensitive === 'true'));
-          if (isDesensitized !== undefined) filteredData = filteredData.filter((item) => item.isDesensitized === (isDesensitized === true || isDesensitized === 'true'));
-          if (isEncrypted !== undefined) filteredData = filteredData.filter((item) => item.isEncrypted === (isEncrypted === true || isEncrypted === 'true'));
-          if (groupName) filteredData = filteredData.filter((item) => item.groupName === groupName);
+            const rows = await listFullDataItems();
+            let filteredData = rows;
+            if (fieldName) filteredData = filteredData.filter((item) => item.fieldName.includes(String(fieldName)));
+            if (fieldComment) filteredData = filteredData.filter((item) => item.fieldComment.includes(String(fieldComment)));
+            if (fieldTable) filteredData = filteredData.filter((item) => item.fieldTable.includes(String(fieldTable)));
+            if (dataType) filteredData = filteredData.filter((item) => item.dataType === dataType);
+            if (dataCategory) filteredData = filteredData.filter((item) => item.dataCategory === dataCategory);
+            if (dataLevel) filteredData = filteredData.filter((item) => item.dataLevel === dataLevel);
+            if (isSensitive !== undefined) filteredData = filteredData.filter((item) => item.isSensitive === (isSensitive === true || isSensitive === 'true'));
+            if (maskingStatus) filteredData = filteredData.filter((item) => item.maskingStatus === maskingStatus);
+            if (encryptionStatus) filteredData = filteredData.filter((item) => item.encryptionStatus === encryptionStatus);
+            if (groupName) filteredData = filteredData.filter((item) => item.groupName === groupName);
 
-          return {
-            data: filteredData,
-            success: true,
-            total: filteredData.length,
-          };
+            return {
+              data: filteredData,
+              success: true,
+              total: filteredData.length,
+            };
+          } catch {
+            messageApi.error('加载全量数据列表失败');
+            return {
+              data: [],
+              success: false,
+              total: 0,
+            };
+          }
         }}
         columns={columns}
         pagination={{
