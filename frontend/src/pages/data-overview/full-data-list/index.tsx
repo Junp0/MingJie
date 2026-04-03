@@ -1,6 +1,6 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { Button, Drawer, Table, message } from 'antd';
+import { Button, Drawer, Space, Switch, Table, Typography, message } from 'antd';
 import React, { useRef, useState } from 'react';
 import {
   listFullDataItems,
@@ -13,12 +13,15 @@ import {
   type SampleDataItem,
 } from '../shared/fieldDisplay';
 
+const { Text } = Typography;
+
 const FullDataList: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
   const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
   const [currentFieldName, setCurrentFieldName] = useState('');
+  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
 
   const showSampleData = (record: FullDataItem) => {
     setCurrentSampleData(buildSampleDataItems(record.sampleData, record.updateTime));
@@ -55,6 +58,16 @@ const FullDataList: React.FC = () => {
           >
             导出数据
           </Button>,
+          <Space key="hide-deleted" size={8}>
+            <Text type="secondary">隐藏已删除</Text>
+            <Switch
+              checked={hideDeletedObjects}
+              onChange={(checked) => {
+                setHideDeletedObjects(checked);
+                actionRef.current?.reload();
+              }}
+            />
+          </Space>,
         ]}
         request={async (params) => {
           try {
@@ -73,7 +86,9 @@ const FullDataList: React.FC = () => {
             } = params as Record<string, any>;
 
             const rows = await listFullDataItems();
-            let filteredData = rows;
+            let filteredData = hideDeletedObjects
+              ? rows.filter((item) => !item.isDeleted)
+              : rows;
             if (databaseName) filteredData = filteredData.filter((item) => item.databaseName.includes(String(databaseName)));
             if (tableName) filteredData = filteredData.filter((item) => item.tableName.includes(String(tableName)));
             if (fieldName) filteredData = filteredData.filter((item) => item.fieldName.includes(String(fieldName)));

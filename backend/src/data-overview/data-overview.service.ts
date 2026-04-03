@@ -61,6 +61,9 @@ export interface OverviewFieldRecord {
   sampleData: string[];
   updateTime: string;
   status: 'active' | 'inactive' | 'processing';
+  isDeleted: boolean;
+  tableIsDeleted: boolean;
+  databaseIsDeleted: boolean;
 }
 
 export interface MissedDataRecord extends Omit<OverviewFieldRecord, 'status'> {
@@ -90,6 +93,9 @@ export interface TableFieldRecord {
   assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
+  isDeleted: boolean;
+  tableIsDeleted: boolean;
+  databaseIsDeleted: boolean;
 }
 
 export interface TableRecord {
@@ -101,6 +107,7 @@ export interface TableRecord {
   status: 'online' | 'offline' | 'maintenance';
   lastSyncTime: string;
   syncStatus: 'success' | 'failed' | 'syncing';
+  isDeleted: boolean;
   fields: TableFieldRecord[];
 }
 
@@ -112,6 +119,7 @@ export interface DatabaseRecord {
   port: number;
   type: string;
   status: 'online' | 'offline';
+  isDeleted: boolean;
   tables: TableRecord[];
 }
 
@@ -766,6 +774,9 @@ export class DataOverviewService {
           sampleData,
           updateTime: this.formatDateTime(asset.updatedAt),
           status,
+          isDeleted: false,
+          tableIsDeleted: false,
+          databaseIsDeleted: false,
         } satisfies OverviewFieldRecord;
       });
     });
@@ -841,6 +852,9 @@ export class DataOverviewService {
                 : asset.status === CommonStatus.INACTIVE
                   ? 'processing'
                   : 'inactive',
+            isDeleted: column.isDeleted || table.isDeleted || asset.isDeleted,
+            tableIsDeleted: table.isDeleted || asset.isDeleted,
+            databaseIsDeleted: asset.isDeleted,
           } satisfies OverviewFieldRecord;
         });
       }),
@@ -882,7 +896,13 @@ export class DataOverviewService {
         );
 
         return table.columns
-          .filter((column) => !column.classificationDataTypeId)
+          .filter(
+            (column) =>
+              !column.isDeleted &&
+              !table.isDeleted &&
+              !asset.isDeleted &&
+              !column.classificationDataTypeId,
+          )
           .map((column) => {
             const closestCandidate = this.evaluateClosestClassificationCandidate(
               {
@@ -945,6 +965,9 @@ export class DataOverviewService {
               hitRate: closestCandidate.hitRate,
               sampleData,
               updateTime: this.formatDateTime(column.updatedAt),
+              isDeleted: false,
+              tableIsDeleted: false,
+              databaseIsDeleted: false,
             } satisfies MissedDataRecord;
           });
       }),
@@ -1008,6 +1031,9 @@ export class DataOverviewService {
           hitRate: closestCandidate.hitRate,
           sampleData: [item.ipAddress, item.databaseName ?? item.sourceName],
           updateTime: this.formatDateTime(item.updatedAt),
+          isDeleted: false,
+          tableIsDeleted: false,
+          databaseIsDeleted: false,
         } satisfies MissedDataRecord;
       });
   }
@@ -1032,8 +1058,8 @@ export class DataOverviewService {
       return Array.from(groupedByInstance.values()).map((instanceAssets) => ({
         ip: instanceAssets[0]?.ipAddress ?? '',
         port: instanceAssets[0]?.port ?? 0,
-        status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
-        databases: instanceAssets.map((asset) => {
+            status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
+            databases: instanceAssets.map((asset) => {
           const assetGroupMeta = this.buildAssetGroupMeta(
             asset.assetGroupId,
             asset.assetGroup?.name,
@@ -1048,6 +1074,7 @@ export class DataOverviewService {
             port: asset.port,
             type: asset.sourceType,
             status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
+            isDeleted: asset.isDeleted,
             tables: asset.tables.map((table) => ({
               id: table.id,
               name: table.tableName,
@@ -1062,6 +1089,7 @@ export class DataOverviewService {
                 : 'offline',
               lastSyncTime: this.formatDateTime(table.updatedAt),
               syncStatus: 'success',
+              isDeleted: table.isDeleted || asset.isDeleted,
               fields: table.columns.map((column) => {
                 const sampleData = Array.isArray(column.sampleData)
                   ? (column.sampleData as string[])
@@ -1111,6 +1139,9 @@ export class DataOverviewService {
                   assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
                   sampleData,
                   updateTime: this.formatDateTime(column.updatedAt),
+                  isDeleted: column.isDeleted || table.isDeleted || asset.isDeleted,
+                  tableIsDeleted: table.isDeleted || asset.isDeleted,
+                  databaseIsDeleted: asset.isDeleted,
                 };
               }),
             })),
@@ -1146,6 +1177,9 @@ export class DataOverviewService {
         assetGroupPathNames: field.assetGroupPathNames,
         sampleData: field.sampleData,
         updateTime: field.updateTime,
+        isDeleted: false,
+        tableIsDeleted: false,
+        databaseIsDeleted: false,
       });
       fieldsByAssetId.set(assetId, current);
     });
@@ -1174,6 +1208,7 @@ export class DataOverviewService {
           port: asset.port,
           type: asset.sourceType,
           status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
+          isDeleted: false,
           tables: [
             {
               id: `${asset.id}-table-main`,
@@ -1184,6 +1219,7 @@ export class DataOverviewService {
               status: asset.status === CommonStatus.ARCHIVED ? 'maintenance' : asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
               lastSyncTime: this.formatDateTime(asset.updatedAt),
               syncStatus: 'success',
+              isDeleted: false,
               fields,
             },
           ],

@@ -21,6 +21,8 @@ export type DataAssetSourceType =
 export interface DataAssetRecord {
   id: string;
   name: string;
+  isDeleted: boolean;
+  deletedAt?: string;
   assetType: DataAssetType;
   ipAddress: string;
   port: number;
@@ -98,6 +100,8 @@ export const DATA_ASSET_SOURCE_TYPE_OPTIONS: Array<{ label: string; value: DataA
 type BackendAsset = {
   id: string;
   name: string;
+  isDeleted?: boolean;
+  deletedAt?: string | null;
   sourceType: string;
   sourceDatabaseName?: string | null;
   ipAddress: string;
@@ -152,6 +156,8 @@ const mapAsset = (item: BackendAsset): DataAssetRecord => {
   return {
     id: item.id,
     name: item.name,
+    isDeleted: item.isDeleted ?? false,
+    deletedAt: formatBeijingDateTime(item.deletedAt ?? undefined) || undefined,
     assetType: 'database',
     ipAddress: item.ipAddress,
     port: item.port,

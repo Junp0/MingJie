@@ -198,7 +198,18 @@ export class ImportTasksService {
       assetGroup: true,
       creator: true,
       classificationTask: true,
-      dataAsset: true,
+      dataAsset: {
+        include: {
+          tables: {
+            include: {
+              columns: {
+                orderBy: { ordinalPosition: 'asc' as const },
+              },
+            },
+            orderBy: { tableName: 'asc' as const },
+          },
+        },
+      },
       tables: {
         include: {
           columns: true,
@@ -573,9 +584,24 @@ export class ImportTasksService {
   }
 
   private async importMySqlSchema(taskId: string, dto: CreateImportTaskDto) {
-    const connection = await this.openMySqlConnection(dto);
+    const connection = await this.openMySqlConnection({
+      ...dto,
+      databaseName: undefined,
+    });
 
     try {
+      const [schemaRows] = await connection.query(
+        `
+          SELECT SCHEMA_NAME
+          FROM information_schema.SCHEMATA
+          WHERE SCHEMA_NAME = ?
+          LIMIT 1
+        `,
+        [dto.databaseName],
+      );
+      const schemaExists =
+        (schemaRows as Array<{ SCHEMA_NAME: string }>).length > 0;
+
       const [tablesRows] = await connection.query(
         `
           SELECT
@@ -642,6 +668,8 @@ export class ImportTasksService {
             description: dto.description,
             tags: ['mysql-import', dto.databaseName ?? 'database'],
             assetGroupId: dto.assetGroupId,
+            isDeleted: false,
+            deletedAt: null,
           },
         });
       } else {
@@ -653,49 +681,84 @@ export class ImportTasksService {
             sourceDatabaseName: dto.databaseName,
             description: dto.description,
             assetGroupId: dto.assetGroupId,
+            isDeleted: false,
+            deletedAt: null,
           },
         });
       }
 
+      const syncTimestamp = new Date();
+      if (!schemaExists) {
+        await this.prisma.dataAssetColumn.updateMany({
+          where: {
+            table: {
+              assetId: asset.id,
+            },
+          },
+          data: {
+            isDeleted: true,
+            deletedAt: syncTimestamp,
+          },
+        });
+        await this.prisma.dataAssetTable.updateMany({
+          where: { assetId: asset.id },
+          data: {
+            isDeleted: true,
+            deletedAt: syncTimestamp,
+          },
+        });
+
+        const deletedAsset = await this.prisma.dataAsset.update({
+          where: { id: asset.id },
+          data: {
+            tableCount: 0,
+            fieldCount: 0,
+            sizeBytes: 0,
+            recordCount: 0,
+            tags: ['mysql-import', dto.databaseName ?? 'database'],
+            isDeleted: true,
+            deletedAt: syncTimestamp,
+          },
+        });
+
+        await this.prisma.importTask.update({
+          where: { id: taskId },
+          data: {
+            status: ImportTaskStatus.SUCCESS,
+            progress: 100,
+            dataAssetId: deletedAsset.id,
+            importedTableCount: 0,
+            importedFieldCount: 0,
+            importedRecordCount: 0,
+            errorMessage: null,
+          },
+        });
+
+        return;
+      }
+
+      const existingTables = await this.prisma.dataAssetTable.findMany({
+        where: { assetId: asset.id },
+        include: {
+          columns: true,
+        },
+      });
+      const existingTablesByName = new Map(
+        existingTables.map((table) => [table.tableName, table]),
+      );
       const existingSampleMap =
         dto.sampleStorageMode === 'incremental'
           ? new Map(
-              (
-                await this.prisma.dataAssetColumn.findMany({
-                  where: {
-                    table: {
-                      assetId: asset.id,
-                    },
-                  },
-                  select: {
-                    columnName: true,
-                    sampleData: true,
-                    table: {
-                      select: {
-                        tableName: true,
-                      },
-                    },
-                  },
-                })
-              ).map((column) => [
-                `${column.table.tableName}::${column.columnName}`,
-                Array.isArray(column.sampleData)
-                  ? (column.sampleData as string[])
-                  : [],
-              ]),
+              existingTables.flatMap((table) =>
+                table.columns.map((column) => [
+                  `${table.tableName}::${column.columnName}`,
+                  Array.isArray(column.sampleData)
+                    ? (column.sampleData as string[])
+                    : [],
+                ]),
+              ),
             )
           : new Map<string, string[]>();
-
-      await this.prisma.dataAssetColumn.deleteMany({
-        where: {
-          table: {
-            assetId: asset.id,
-          },
-        },
-      });
-      await this.prisma.dataAssetTable.deleteMany({
-        where: { assetId: asset.id },
-      });
 
       const columnsByTable = new Map<string, RemoteColumn[]>();
       columnsResult.forEach((column) => {
@@ -707,29 +770,58 @@ export class ImportTasksService {
       let fieldCount = 0;
       let recordCount = 0;
       let sizeBytes = 0;
+      const nextTableNames = new Set<string>();
 
       for (const table of tablesResult) {
+        nextTableNames.add(table.TABLE_NAME);
         const tableColumns = columnsByTable.get(table.TABLE_NAME) ?? [];
         const sampleOrderColumn =
           this.findPreferredSampleOrderColumn(tableColumns);
+        const existingTable = existingTablesByName.get(table.TABLE_NAME);
         recordCount += Number(table.TABLE_ROWS ?? 0);
         sizeBytes +=
           Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0);
 
-        const createdTable = await this.prisma.dataAssetTable.create({
-          data: {
-            assetId: asset.id,
-            importTaskId: taskId,
-            tableName: table.TABLE_NAME,
-            tableComment: table.TABLE_COMMENT ?? '',
-            engine: table.ENGINE ?? undefined,
-            rowCount: Number(table.TABLE_ROWS ?? 0),
-            sizeBytes:
-              Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0),
-          },
-        });
+        const persistedTable = existingTable
+          ? await this.prisma.dataAssetTable.update({
+              where: { id: existingTable.id },
+              data: {
+                importTaskId: taskId,
+                tableComment: table.TABLE_COMMENT ?? '',
+                engine: table.ENGINE ?? undefined,
+                rowCount: Number(table.TABLE_ROWS ?? 0),
+                sizeBytes:
+                  Number(table.DATA_LENGTH ?? 0) +
+                  Number(table.INDEX_LENGTH ?? 0),
+                isDeleted: false,
+                deletedAt: null,
+              },
+            })
+          : await this.prisma.dataAssetTable.create({
+              data: {
+                assetId: asset.id,
+                importTaskId: taskId,
+                tableName: table.TABLE_NAME,
+                tableComment: table.TABLE_COMMENT ?? '',
+                engine: table.ENGINE ?? undefined,
+                rowCount: Number(table.TABLE_ROWS ?? 0),
+                sizeBytes:
+                  Number(table.DATA_LENGTH ?? 0) +
+                  Number(table.INDEX_LENGTH ?? 0),
+                isDeleted: false,
+                deletedAt: null,
+              },
+            });
+        const existingColumnsByName = new Map(
+          (existingTable?.columns ?? []).map((column) => [
+            column.columnName,
+            column,
+          ]),
+        );
+        const nextColumnNames = new Set<string>();
 
         for (const column of tableColumns) {
+          nextColumnNames.add(column.COLUMN_NAME);
           fieldCount += 1;
           const sampleData = await this.loadSampleData(
             connection,
@@ -747,20 +839,83 @@ export class ImportTasksService {
             },
           );
 
-          await this.prisma.dataAssetColumn.create({
+          const existingColumn = existingColumnsByName.get(column.COLUMN_NAME);
+          if (existingColumn) {
+            await this.prisma.dataAssetColumn.update({
+              where: { id: existingColumn.id },
+              data: {
+                tableId: persistedTable.id,
+                columnComment: column.COLUMN_COMMENT ?? '',
+                dataType: column.DATA_TYPE,
+                columnType: column.COLUMN_TYPE,
+                isNullable: column.IS_NULLABLE === 'YES',
+                isPrimaryKey: column.COLUMN_KEY === 'PRI',
+                ordinalPosition: column.ORDINAL_POSITION,
+                sampleData,
+                isDeleted: false,
+                deletedAt: null,
+              },
+            });
+          } else {
+            await this.prisma.dataAssetColumn.create({
+              data: {
+                tableId: persistedTable.id,
+                columnName: column.COLUMN_NAME,
+                columnComment: column.COLUMN_COMMENT ?? '',
+                dataType: column.DATA_TYPE,
+                columnType: column.COLUMN_TYPE,
+                isNullable: column.IS_NULLABLE === 'YES',
+                isPrimaryKey: column.COLUMN_KEY === 'PRI',
+                ordinalPosition: column.ORDINAL_POSITION,
+                sampleData,
+                isDeleted: false,
+                deletedAt: null,
+              },
+            });
+          }
+        }
+
+        const deletedColumnIds = (existingTable?.columns ?? [])
+          .filter((column) => !nextColumnNames.has(column.columnName))
+          .map((column) => column.id);
+
+        if (deletedColumnIds.length > 0) {
+          await this.prisma.dataAssetColumn.updateMany({
+            where: {
+              id: { in: deletedColumnIds },
+            },
             data: {
-              tableId: createdTable.id,
-              columnName: column.COLUMN_NAME,
-              columnComment: column.COLUMN_COMMENT ?? '',
-              dataType: column.DATA_TYPE,
-              columnType: column.COLUMN_TYPE,
-              isNullable: column.IS_NULLABLE === 'YES',
-              isPrimaryKey: column.COLUMN_KEY === 'PRI',
-              ordinalPosition: column.ORDINAL_POSITION,
-              sampleData,
+              isDeleted: true,
+              deletedAt: syncTimestamp,
             },
           });
         }
+      }
+
+      const deletedTables = existingTables.filter(
+        (table) => !nextTableNames.has(table.tableName),
+      );
+      const deletedTableIds = deletedTables.map((table) => table.id);
+
+      if (deletedTableIds.length > 0) {
+        await this.prisma.dataAssetTable.updateMany({
+          where: {
+            id: { in: deletedTableIds },
+          },
+          data: {
+            isDeleted: true,
+            deletedAt: syncTimestamp,
+          },
+        });
+        await this.prisma.dataAssetColumn.updateMany({
+          where: {
+            tableId: { in: deletedTableIds },
+          },
+          data: {
+            isDeleted: true,
+            deletedAt: syncTimestamp,
+          },
+        });
       }
 
       const updatedAsset = await this.prisma.dataAsset.update({
@@ -772,6 +927,8 @@ export class ImportTasksService {
           recordCount,
           dataLevel: asset.dataLevel ?? DataLevel.INTERNAL,
           tags: ['mysql-import', dto.databaseName ?? 'database'],
+          isDeleted: false,
+          deletedAt: null,
         },
       });
 
@@ -837,6 +994,11 @@ export class ImportTasksService {
         classificationTaskId: true,
         runClassificationImmediatelyAfterImport: true,
         classificationTriggeredAt: true,
+        dataAsset: {
+          select: {
+            isDeleted: true,
+          },
+        },
       },
     });
 
@@ -845,7 +1007,8 @@ export class ImportTasksService {
       task.status !== ImportTaskStatus.SUCCESS ||
       !task.classificationTaskId ||
       !task.runClassificationImmediatelyAfterImport ||
-      task.classificationTriggeredAt
+      task.classificationTriggeredAt ||
+      task.dataAsset?.isDeleted
     ) {
       return;
     }

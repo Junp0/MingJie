@@ -26,6 +26,7 @@ import {
   Select,
   Space,
   Statistic,
+  Switch,
   Tag,
   Tree,
   Typography,
@@ -198,7 +199,9 @@ const sumAssetMetrics = (assets: DataAssetRecord[]) =>
   assets.reduce(
     (total, asset) => ({
       assetCount: total.assetCount + 1,
-      activeAssetCount: total.activeAssetCount + (asset.status === 'active' ? 1 : 0),
+      activeAssetCount:
+        total.activeAssetCount +
+        (asset.status === 'active' && !asset.isDeleted ? 1 : 0),
       tableCount: total.tableCount + asset.tableCount,
       fieldCount: total.fieldCount + asset.fieldCount,
     }),
@@ -352,6 +355,7 @@ const DataAssetList: React.FC = () => {
   const [targetParentId, setTargetParentId] = useState<string | null>(null);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
   const tableFilterParamsRef = useRef<Record<string, unknown>>({});
 
   const rootGroupIds = useMemo(
@@ -403,9 +407,16 @@ const DataAssetList: React.FC = () => {
     () => assets.filter((asset) => selectedGroupScopeSet.has(asset.assetGroupId)),
     [assets, selectedGroupScopeSet],
   );
+  const visibleSelectedScopeAssets = useMemo(
+    () =>
+      hideDeletedObjects
+        ? selectedScopeAssets.filter((asset) => !asset.isDeleted)
+        : selectedScopeAssets,
+    [hideDeletedObjects, selectedScopeAssets],
+  );
   const selectedAssetMetrics = useMemo(
-    () => sumAssetMetrics(selectedScopeAssets),
-    [selectedScopeAssets],
+    () => sumAssetMetrics(visibleSelectedScopeAssets),
+    [visibleSelectedScopeAssets],
   );
 
   const directAssetCountByGroupId = useMemo(
@@ -717,7 +728,7 @@ const DataAssetList: React.FC = () => {
 
   const handleExportList = () => {
     const exportData = filterAssetsByParams(
-      selectedScopeAssets,
+      visibleSelectedScopeAssets,
       tableFilterParamsRef.current,
     );
 
@@ -793,7 +804,21 @@ const DataAssetList: React.FC = () => {
         width: 220,
         render: (_, record) => (
           <div style={{ lineHeight: 1.5 }}>
-            <div>{record.name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span
+                style={
+                  record.isDeleted
+                    ? {
+                        textDecoration: 'line-through',
+                        color: '#8c8c8c',
+                      }
+                    : undefined
+                }
+              >
+                {record.name}
+              </span>
+              {record.isDeleted ? <Tag color="red">已删除</Tag> : null}
+            </div>
             <div style={{ color: '#8c8c8c', fontSize: 12 }}>
               {record.ipAddress}:{record.port}
             </div>
@@ -823,6 +848,9 @@ const DataAssetList: React.FC = () => {
             inactive: { color: 'default', text: '非活跃' },
             archived: { color: 'orange', text: '已归档' },
           };
+          if (record.isDeleted) {
+            return <Tag color="red">已删除</Tag>;
+          }
           const status = statusMap[record.status];
           return <Tag color={status.color}>{status.text}</Tag>;
         },
@@ -1062,6 +1090,16 @@ const DataAssetList: React.FC = () => {
                   <Button key="add" type="primary" onClick={handleCreateImportTask}>
                     资产导入
                   </Button>,
+                  <Space key="hide-deleted" size={8}>
+                    <Text type="secondary">隐藏已删除</Text>
+                    <Switch
+                      checked={hideDeletedObjects}
+                      onChange={(checked) => {
+                        setHideDeletedObjects(checked);
+                        actionRef.current?.reload();
+                      }}
+                    />
+                  </Space>,
                   <Button key="export" onClick={handleExportList}>
                     导出清单
                   </Button>,
@@ -1069,7 +1107,7 @@ const DataAssetList: React.FC = () => {
                 request={async (params) => {
                   tableFilterParamsRef.current = params;
 
-                  const filteredData = filterAssetsByParams(selectedScopeAssets, params);
+                  const filteredData = filterAssetsByParams(visibleSelectedScopeAssets, params);
                   return {
                     data: filteredData,
                     success: true,

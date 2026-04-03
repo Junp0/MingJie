@@ -1,7 +1,7 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { useLocation } from '@umijs/max';
-import { Button, Card, Drawer, Empty, List, Space, Table, Tag, Tree, Typography, message } from 'antd';
+import { Button, Card, Drawer, Empty, List, Space, Switch, Table, Tag, Tree, Typography, message } from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   listDatabaseInstances,
@@ -31,6 +31,7 @@ interface DatabaseItem {
   port: number;
   type: string;
   status: 'online' | 'offline';
+  isDeleted: boolean;
   tables: TableItem[];
 }
 
@@ -45,6 +46,7 @@ interface TableItem {
   status: 'online' | 'offline' | 'maintenance';
   lastSyncTime: string;
   syncStatus: 'success' | 'failed' | 'syncing';
+  isDeleted: boolean;
   fields: FieldItem[];
 }
 
@@ -67,11 +69,15 @@ interface FieldItem {
   assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
+  isDeleted: boolean;
+  tableIsDeleted: boolean;
+  databaseIsDeleted: boolean;
 }
 
 interface TableListItem extends TableItem {
   databaseName: string;
   instanceIp: string;
+  databaseIsDeleted: boolean;
 }
 
 interface FieldListItem extends FieldItem {
@@ -84,7 +90,10 @@ interface FieldListItem extends FieldItem {
 }
 
 const getDatabaseFieldSummary = (database: DatabaseItem) => {
-  const allFields = database.tables.flatMap((table) => table.fields);
+  const activeTables = database.tables.filter((table) => !table.isDeleted);
+  const allFields = activeTables.flatMap((table) =>
+    table.fields.filter((field) => !field.isDeleted),
+  );
   const levelCounter = {
     public: 0,
     internal: 0,
@@ -108,7 +117,7 @@ const getDatabaseFieldSummary = (database: DatabaseItem) => {
   });
 
   return {
-    tableCount: database.tables.length,
+    tableCount: activeTables.length,
     fieldCount: allFields.length,
     levelCounter,
   };
@@ -125,6 +134,12 @@ const LEVEL_COUNT_TAGS: Array<{
   { key: "secret", label: "核心", color: "red" },
   { key: "unknown", label: "未分级", color: "default" },
 ];
+
+const renderDeletedText = (value: string, deleted: boolean) => (
+  <Text delete={deleted} type={deleted ? 'secondary' : undefined}>
+    {value}
+  </Text>
+);
 
 const FIELD_TEMPLATES = [
   { fieldName: 'id', fieldComment: '主键ID', dataType: 'BIGINT', dataCategory: '标识信息' },
@@ -148,6 +163,7 @@ const TableDataList: React.FC = () => {
   const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
   const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
   const [currentFieldName, setCurrentFieldName] = useState('');
+  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +203,30 @@ const TableDataList: React.FC = () => {
 
     return new Map(entries);
   }, [databaseInstances]);
+
+  const visibleDatabaseInstances = useMemo(
+    () =>
+      hideDeletedObjects
+        ? databaseInstances
+            .map((instance) => ({
+              ...instance,
+              databases: instance.databases
+                .filter((database) => !database.isDeleted)
+                .map((database) => ({
+                  ...database,
+                  tables: database.tables
+                    .filter((table) => !table.isDeleted)
+                    .map((table) => ({
+                      ...table,
+                      fields: table.fields.filter((field) => !field.isDeleted),
+                    })),
+                }))
+                .filter((database) => database.tables.length > 0),
+            }))
+            .filter((instance) => instance.databases.length > 0)
+        : databaseInstances,
+    [databaseInstances, hideDeletedObjects],
+  );
 
   const showSampleData = (record: FieldListItem) => {
     setCurrentSampleData(buildSampleDataItems(record.sampleData, record.updateTime));
@@ -252,6 +292,7 @@ const TableDataList: React.FC = () => {
         port: currentDatabase.port,
         databaseName: currentDatabase.name,
         instanceIp: currentInstance.ip,
+        databaseIsDeleted: currentDatabase.isDeleted,
       }));
     }
 
@@ -262,6 +303,7 @@ const TableDataList: React.FC = () => {
         port: database.port,
         databaseName: database.name,
         instanceIp: currentInstance.ip,
+        databaseIsDeleted: database.isDeleted,
       })),
     );
   }, [currentDatabase, currentInstance]);
@@ -364,14 +406,17 @@ const TableDataList: React.FC = () => {
             selectedKeys={selectedTreeKeys}
             defaultExpandAll
             onSelect={handleDatabaseTreeSelect}
-            treeData={databaseInstances.map((instance) => ({
+            treeData={visibleDatabaseInstances.map((instance) => ({
               key: `instance:${instance.ip}:${instance.port}`,
               title: (
                 <div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 'bold' }}>
                       {instance.databases.length === 1
-                        ? instance.databases[0]?.assetName ?? `${instance.ip}:${instance.port}`
+                        ? renderDeletedText(
+                            instance.databases[0]?.assetName ?? `${instance.ip}:${instance.port}`,
+                            instance.databases[0]?.isDeleted ?? false,
+                          )
                         : `${instance.databases[0]?.assetName ?? '数据资产'} 等${instance.databases.length}个资产`}
                     </span>
                     <span style={{ fontSize: 12, color: '#999' }}>
@@ -387,7 +432,9 @@ const TableDataList: React.FC = () => {
                 key: `database:${database.id}`,
                 title: (
                   <div>
-                    <div style={{ fontWeight: 'bold' }}>{database.name}</div>
+                    <div style={{ fontWeight: 'bold' }}>
+                      {renderDeletedText(database.name, database.isDeleted)}
+                    </div>
                     {(() => {
                       const summary = getDatabaseFieldSummary(database);
                       return (
@@ -424,12 +471,28 @@ const TableDataList: React.FC = () => {
 
         <Card
           title="表目录"
+          extra={
+            <Space size={8}>
+              <Text type="secondary">隐藏已删除</Text>
+              <Switch
+                checked={hideDeletedObjects}
+                onChange={(checked) => {
+                  setHideDeletedObjects(checked);
+                  actionRef.current?.reload();
+                }}
+              />
+            </Space>
+          }
           style={{ width: '18%', minWidth: '220px' }}
           bodyStyle={{ padding: '8px', height: '100%', overflow: 'auto' }}
         >
           {currentInstance ? (
             <List
-              dataSource={currentTables}
+              dataSource={
+                hideDeletedObjects
+                  ? currentTables.filter((table) => !table.isDeleted)
+                  : currentTables
+              }
               renderItem={(table) => (
                 <List.Item
                   style={{
@@ -446,8 +509,12 @@ const TableDataList: React.FC = () => {
                   onClick={() => handleTableSelect(table)}
                 >
                   <div style={{ width: '100%' }}>
-                    <div style={{ fontWeight: 'bold' }}>{table.name}</div>
-                    <div style={{ fontSize: 12, color: '#666' }}>数据库: {table.databaseName}</div>
+                    <div style={{ fontWeight: 'bold' }}>
+                      {renderDeletedText(table.name, table.isDeleted)}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      数据库: {renderDeletedText(table.databaseName, table.databaseIsDeleted)}
+                    </div>
                     <div style={{ fontSize: 12, color: '#666' }}>
                       行数: {table.rowCount.toLocaleString()}
                     </div>
@@ -464,7 +531,9 @@ const TableDataList: React.FC = () => {
                               : 'red'
                         }
                       >
-                        {table.status === 'online'
+                        {table.isDeleted
+                          ? '已删除'
+                          : table.status === 'online'
                           ? '在线'
                           : table.status === 'maintenance'
                             ? '维护中'
@@ -553,7 +622,9 @@ const TableDataList: React.FC = () => {
                   rootGroupName,
                 } = params as Record<string, any>;
 
-                let filteredData = currentFields;
+                let filteredData = hideDeletedObjects
+                  ? currentFields.filter((item) => !item.isDeleted)
+                  : currentFields;
 
                 if (databaseName) {
                   filteredData = filteredData.filter((item) =>

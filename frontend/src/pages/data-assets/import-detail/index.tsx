@@ -3,6 +3,8 @@ import {
   getImportTaskById,
   updateImportTaskStatus,
   type DataAssetImportRecord,
+  type ImportedColumnRecord,
+  type ImportedTableRecord,
 } from "@/services/data-assets/importTaskStore";
 import {
   getClassificationTaskById,
@@ -19,6 +21,7 @@ import {
   Modal,
   Progress,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -27,6 +30,21 @@ import {
 import React, { useEffect, useMemo, useState } from "react";
 
 const { Paragraph, Text } = Typography;
+
+const renderDeletedLabel = (
+  value: string,
+  deleted: boolean,
+  deletedAt?: string
+) => (
+  <Space size={8} wrap>
+    <Text delete={deleted} type={deleted ? "secondary" : undefined}>
+      {value}
+    </Text>
+    {deleted ? (
+      <Tag color="red">{deletedAt ? `已删除 ${deletedAt}` : "已删除"}</Tag>
+    ) : null}
+  </Space>
+);
 
 const ImportDetail: React.FC = () => {
   const navigate = useNavigate();
@@ -38,6 +56,7 @@ const ImportDetail: React.FC = () => {
   );
   const [linkedClassificationTask, setLinkedClassificationTask] =
     useState<ClassificationTaskRecord | null>(null);
+  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +187,135 @@ const ImportDetail: React.FC = () => {
     },
   ];
 
+  const tableColumns = [
+    {
+      title: "数据表",
+      dataIndex: "tableName",
+      key: "tableName",
+      render: (_: string, record: ImportedTableRecord) =>
+        renderDeletedLabel(record.tableName, record.isDeleted, record.deletedAt),
+    },
+    {
+      title: "表注释",
+      dataIndex: "tableComment",
+      key: "tableComment",
+      render: (value: string, record: ImportedTableRecord) => (
+        <Text delete={record.isDeleted} type={record.isDeleted ? "secondary" : undefined}>
+          {value || "-"}
+        </Text>
+      ),
+    },
+    {
+      title: "字段数",
+      key: "columnCount",
+      width: 100,
+      align: "center" as const,
+      render: (_: unknown, record: ImportedTableRecord) => record.columns.length,
+    },
+    {
+      title: "记录数",
+      dataIndex: "rowCount",
+      key: "rowCount",
+      width: 120,
+      align: "center" as const,
+      render: (value: number) => value.toLocaleString(),
+    },
+    {
+      title: "状态",
+      key: "status",
+      width: 120,
+      align: "center" as const,
+      render: (_: unknown, record: ImportedTableRecord) => (
+        <Tag color={record.isDeleted ? "red" : "green"}>
+          {record.isDeleted ? "已删除" : "正常"}
+        </Tag>
+      ),
+    },
+  ];
+
+  const columnColumns = [
+    {
+      title: "字段名",
+      dataIndex: "columnName",
+      key: "columnName",
+      render: (_: string, record: ImportedColumnRecord) =>
+        renderDeletedLabel(record.columnName, record.isDeleted, record.deletedAt),
+    },
+    {
+      title: "字段注释",
+      dataIndex: "columnComment",
+      key: "columnComment",
+      render: (value: string, record: ImportedColumnRecord) => (
+        <Text delete={record.isDeleted} type={record.isDeleted ? "secondary" : undefined}>
+          {value || "-"}
+        </Text>
+      ),
+    },
+    {
+      title: "字段类型",
+      dataIndex: "columnType",
+      key: "columnType",
+      width: 180,
+      align: "center" as const,
+      render: (value: string, record: ImportedColumnRecord) => (
+        <Text delete={record.isDeleted} type={record.isDeleted ? "secondary" : undefined}>
+          {value}
+        </Text>
+      ),
+    },
+    {
+      title: "分类结果",
+      dataIndex: "dataCategory",
+      key: "dataCategory",
+      width: 160,
+      align: "center" as const,
+      render: (value: string, record: ImportedColumnRecord) => (
+        <Text delete={record.isDeleted} type={record.isDeleted ? "secondary" : undefined}>
+          {value || "未分类"}
+        </Text>
+      ),
+    },
+    {
+      title: "数据分级",
+      dataIndex: "dataLevel",
+      key: "dataLevel",
+      width: 140,
+      align: "center" as const,
+      render: (value: string | undefined, record: ImportedColumnRecord) => (
+        <Text delete={record.isDeleted} type={record.isDeleted ? "secondary" : undefined}>
+          {value || "-"}
+        </Text>
+      ),
+    },
+    {
+      title: "状态",
+      key: "status",
+      width: 120,
+      align: "center" as const,
+      render: (_: unknown, record: ImportedColumnRecord) => (
+        <Tag color={record.isDeleted ? "red" : "green"}>
+          {record.isDeleted ? "已删除" : "正常"}
+        </Tag>
+      ),
+    },
+  ];
+
+  const visibleSchemaTables = useMemo(
+    () =>
+      !importTask
+        ? []
+        :
+      hideDeletedObjects
+        ? importTask.schemaTables
+            .filter((table) => !table.isDeleted)
+            .map((table) => ({
+              ...table,
+              columns: table.columns.filter((column) => !column.isDeleted),
+            }))
+        : importTask.schemaTables,
+    [hideDeletedObjects, importTask]
+  );
+
   if (!importTask) {
     return (
       <PageContainer
@@ -289,7 +437,11 @@ const ImportDetail: React.FC = () => {
         <Card title="数据资产详情" size="small">
           <Descriptions column={2} bordered>
             <Descriptions.Item label="数据资产名称">
-              {importTask.sourceName}
+              {renderDeletedLabel(
+                importTask.assetName || importTask.sourceName,
+                importTask.assetDeleted,
+                importTask.assetDeletedAt
+              )}
             </Descriptions.Item>
             <Descriptions.Item label="接入类型">
               <Tag color="blue">{importTask.databaseType}</Tag>
@@ -417,6 +569,59 @@ const ImportDetail: React.FC = () => {
             size="small"
             bordered
           />
+        </Card>
+
+        <Card
+          title="当前库表结构"
+          size="small"
+          extra={
+            <Space wrap>
+              <Space size={8}>
+                <Text type="secondary">隐藏已删除</Text>
+                <Switch
+                  checked={hideDeletedObjects}
+                  onChange={setHideDeletedObjects}
+                />
+              </Space>
+              {importTask.assetDeleted ? (
+                <Tag color="red">该数据库在最近一次导入中已标记删除</Tag>
+              ) : null}
+            </Space>
+          }
+        >
+          {visibleSchemaTables.length ? (
+            <Table
+              columns={tableColumns}
+              dataSource={visibleSchemaTables}
+              rowKey="id"
+              pagination={false}
+              size="small"
+              bordered
+              expandable={{
+                expandedRowRender: (tableRecord: ImportedTableRecord) => (
+                  <Table
+                    columns={columnColumns}
+                    dataSource={tableRecord.columns}
+                    rowKey="id"
+                    pagination={false}
+                    size="small"
+                    bordered
+                  />
+                ),
+                rowExpandable: (tableRecord: ImportedTableRecord) =>
+                  tableRecord.columns.length > 0,
+              }}
+            />
+          ) : (
+            <Empty
+              description="当前暂无可展示的表结构"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          )}
+          <Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+            已存在的表和字段会保留原有分类分级结果；仅新增字段保持初始未分类状态；
+            本次导入缺失的库表字段会保留历史记录并以删除线展示。
+          </Paragraph>
         </Card>
       </Space>
     </PageContainer>

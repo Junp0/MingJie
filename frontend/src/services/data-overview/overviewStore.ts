@@ -27,6 +27,9 @@ export interface FullDataItem {
   sampleData: string[];
   updateTime: string;
   status: 'active' | 'inactive' | 'processing';
+  isDeleted: boolean;
+  tableIsDeleted: boolean;
+  databaseIsDeleted: boolean;
 }
 
 export interface MissedDataItem extends Omit<FullDataItem, 'status'> {
@@ -56,6 +59,9 @@ export interface TableFieldItem {
   assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
+  isDeleted: boolean;
+  tableIsDeleted: boolean;
+  databaseIsDeleted: boolean;
 }
 
 export interface TableItem {
@@ -67,6 +73,7 @@ export interface TableItem {
   status: 'online' | 'offline' | 'maintenance';
   lastSyncTime: string;
   syncStatus: 'success' | 'failed' | 'syncing';
+  isDeleted: boolean;
   fields: TableFieldItem[];
 }
 
@@ -78,6 +85,7 @@ export interface DatabaseItem {
   port: number;
   type: string;
   status: 'online' | 'offline';
+  isDeleted: boolean;
   tables: TableItem[];
 }
 

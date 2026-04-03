@@ -459,14 +459,17 @@ export class ClassificationTasksService {
           where: { id: assetId },
           include: {
             tables: {
+              where: { isDeleted: false },
               include: {
-                columns: true,
+                columns: {
+                  where: { isDeleted: false },
+                },
               },
             },
           },
         });
 
-        if (!asset) {
+        if (!asset || asset.isDeleted) {
           continue;
         }
 

@@ -12,6 +12,31 @@ export type ImportScheduleMode = "single" | "daily" | "weekly" | "monthly";
 export type ImportSampleStrategy = "latest" | "random";
 export type ImportSampleStorageMode = "replace" | "incremental";
 
+export interface ImportedColumnRecord {
+  id: string;
+  columnName: string;
+  columnComment: string;
+  columnType: string;
+  dataCategory: string;
+  dataLevel?: string;
+  isSensitive: boolean;
+  needMask: boolean;
+  needEncrypt: boolean;
+  isDeleted: boolean;
+  deletedAt?: string;
+}
+
+export interface ImportedTableRecord {
+  id: string;
+  tableName: string;
+  tableComment: string;
+  rowCount: number;
+  sizeBytes: number;
+  isDeleted: boolean;
+  deletedAt?: string;
+  columns: ImportedColumnRecord[];
+}
+
 export interface DataAssetImportRecord {
   id: string;
   sourceType: ImportSourceType;
@@ -45,6 +70,10 @@ export interface DataAssetImportRecord {
   classificationTriggeredAt?: string;
   errorMessage?: string;
   creator: string;
+  assetName?: string;
+  assetDeleted: boolean;
+  assetDeletedAt?: string;
+  schemaTables: ImportedTableRecord[];
 }
 
 export interface DataAssetImportFormValues {
@@ -99,7 +128,36 @@ type BackendImportTask = {
   assetGroup?: { id: string; name: string };
   creator?: { id: string; name: string } | null;
   classificationTask?: { id: string } | null;
-  dataAsset?: { id: string } | null;
+  dataAsset?:
+    | {
+        id: string;
+        name: string;
+        isDeleted?: boolean;
+        deletedAt?: string | null;
+        tables?: Array<{
+          id: string;
+          tableName: string;
+          tableComment?: string | null;
+          rowCount?: number;
+          sizeBytes?: number;
+          isDeleted?: boolean;
+          deletedAt?: string | null;
+          columns?: Array<{
+            id: string;
+            columnName: string;
+            columnComment?: string | null;
+            columnType: string;
+            dataCategory?: string | null;
+            dataLevel?: string | null;
+            isSensitive?: boolean;
+            needMask?: boolean;
+            needEncrypt?: boolean;
+            isDeleted?: boolean;
+            deletedAt?: string | null;
+          }>;
+        }>;
+      }
+    | null;
 };
 
 const statusMap: Record<BackendImportTask["status"], ImportTaskStatus> = {
@@ -147,6 +205,31 @@ const normalizeScheduleMode = (value?: string | null): ImportScheduleMode => {
 const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
   const scheduleMode = normalizeScheduleMode(item.scheduleMode);
   const executeAt = formatBeijingDateTime(item.executeAt ?? undefined);
+  const schemaTables: ImportedTableRecord[] = (item.dataAsset?.tables ?? []).map(
+    (table) => ({
+      id: table.id,
+      tableName: table.tableName,
+      tableComment: table.tableComment ?? "",
+      rowCount: table.rowCount ?? 0,
+      sizeBytes: table.sizeBytes ?? 0,
+      isDeleted: table.isDeleted ?? false,
+      deletedAt: formatBeijingDateTime(table.deletedAt ?? undefined) || undefined,
+      columns: (table.columns ?? []).map((column) => ({
+        id: column.id,
+        columnName: column.columnName,
+        columnComment: column.columnComment ?? "",
+        columnType: column.columnType,
+        dataCategory: column.dataCategory ?? "未分类",
+        dataLevel: column.dataLevel ?? undefined,
+        isSensitive: column.isSensitive ?? false,
+        needMask: column.needMask ?? false,
+        needEncrypt: column.needEncrypt ?? false,
+        isDeleted: column.isDeleted ?? false,
+        deletedAt:
+          formatBeijingDateTime(column.deletedAt ?? undefined) || undefined,
+      })),
+    })
+  );
 
   return {
     id: item.id,
@@ -190,6 +273,12 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
       undefined,
     errorMessage: item.errorMessage ?? undefined,
     creator: item.creator?.name ?? "当前用户",
+    assetName: item.dataAsset?.name ?? undefined,
+    assetDeleted: item.dataAsset?.isDeleted ?? false,
+    assetDeletedAt:
+      formatBeijingDateTime(item.dataAsset?.deletedAt ?? undefined) ||
+      undefined,
+    schemaTables,
   };
 };
 

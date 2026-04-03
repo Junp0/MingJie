@@ -29,6 +29,9 @@ export interface OverviewFieldDisplayRecord {
   assetGroupPathNames: string[];
   sampleData: string[];
   updateTime: string;
+  isDeleted: boolean;
+  tableIsDeleted: boolean;
+  databaseIsDeleted: boolean;
 }
 
 export interface SampleDataItem {
@@ -163,6 +166,24 @@ const renderTreeTooltip = (
   );
 };
 
+const renderDeletedText = (
+  value: string,
+  deleted: boolean,
+) => (
+  <span
+    style={
+      deleted
+        ? {
+            textDecoration: 'line-through',
+            color: '#8c8c8c',
+          }
+        : undefined
+    }
+  >
+    {value}
+  </span>
+);
+
 export const createFieldDisplayColumns = <T extends OverviewFieldDisplayRecord>(
   onShowSampleData: (record: T) => void,
 ): ProColumns<T>[] => [
@@ -172,6 +193,8 @@ export const createFieldDisplayColumns = <T extends OverviewFieldDisplayRecord>(
     dataIndex: 'databaseName',
     align: 'center',
     valueType: 'text',
+    render: (_, record) =>
+      renderDeletedText(record.databaseName, record.databaseIsDeleted),
   },
   {
     title: '所属数据表',
@@ -179,8 +202,15 @@ export const createFieldDisplayColumns = <T extends OverviewFieldDisplayRecord>(
     dataIndex: 'tableName',
     align: 'center',
     valueType: 'text',
+    render: (_, record) => renderDeletedText(record.tableName, record.tableIsDeleted),
   },
-  { title: '字段名称', dataIndex: 'fieldName', align: 'center', valueType: 'text' },
+  {
+    title: '字段名称',
+    dataIndex: 'fieldName',
+    align: 'center',
+    valueType: 'text',
+    render: (_, record) => renderDeletedText(record.fieldName, record.isDeleted),
+  },
   { title: '字段注释', dataIndex: 'fieldComment', align: 'center', valueType: 'text' },
   { title: '数据类型', dataIndex: 'dataType', align: 'center', valueType: 'text' },
   {
