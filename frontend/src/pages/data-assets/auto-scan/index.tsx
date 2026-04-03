@@ -36,6 +36,7 @@ import {
   type AutoScanRule,
   type AutoScanRuleFormValues,
 } from '@/services/data-assets/autoScanStore';
+import { formatBeijingDateTime, parseBeijingDateTime } from '@/utils/datetime';
 
 const { Search, TextArea } = Input;
 
@@ -178,7 +179,7 @@ const AutoScanDataAssetsPage: React.FC = () => {
       render: (_, record) =>
         (
           <span style={{ whiteSpace: 'nowrap' }}>
-            {record.scheduleLabel} / 首次 {dayjs(record.firstScanTime).format('YYYY-MM-DD HH:mm')}
+            {record.scheduleLabel} / 首次 {formatBeijingDateTime(record.firstScanTime, 'YYYY-MM-DD HH:mm')}
           </span>
         ),
     },
@@ -232,7 +233,8 @@ const AutoScanDataAssetsPage: React.FC = () => {
               ipRange: record.ipRange,
               portRange: record.portRange,
               scheduleMode: record.scheduleMode,
-              firstScanTime: dayjs(record.firstScanTime),
+              firstScanTime:
+                parseBeijingDateTime(record.firstScanTime) ?? dayjs(),
               status: record.status,
             });
             setRuleModalOpen(true);

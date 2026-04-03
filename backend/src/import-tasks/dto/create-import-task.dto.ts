@@ -3,6 +3,7 @@ import { ImportTaskStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsEnum,
   IsInt,
   IsOptional,
@@ -87,6 +88,25 @@ export class CreateImportTaskDto {
   @IsOptional()
   @IsString()
   executeAt?: string | null;
+
+  @ApiPropertyOptional({ example: 20, default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sampleCount?: number;
+
+  @ApiPropertyOptional({ example: 'latest', default: 'latest' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['latest', 'random'])
+  sampleStrategy?: string;
+
+  @ApiPropertyOptional({ example: 'replace', default: 'replace' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['replace', 'incremental'])
+  sampleStorageMode?: string;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()

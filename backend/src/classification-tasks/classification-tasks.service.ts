@@ -1,18 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AuditLogCategory,
+  AuditLogResult,
   ClassificationTaskSource,
   ClassificationTaskStatus,
   DataLevel,
   Prisma,
   TemplateStatus,
 } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassificationTaskDto } from './dto/create-classification-task.dto';
 import { UpdateClassificationTaskDto } from './dto/update-classification-task.dto';
 
 @Injectable()
 export class ClassificationTasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   private normalizeAssetIds(dataAssetIds?: unknown) {
     if (!Array.isArray(dataAssetIds)) {
@@ -66,6 +72,31 @@ export class ClassificationTasksService {
     }
 
     return parsed;
+  }
+
+  private calculateNextExecuteAt(
+    scheduleMode?: string | null,
+    executeAt?: Date | null,
+    referenceTime: Date = new Date(),
+  ) {
+    if (!executeAt || !scheduleMode || scheduleMode === 'single') {
+      return executeAt ?? null;
+    }
+
+    const nextExecuteAt = new Date(executeAt);
+    while (nextExecuteAt <= referenceTime) {
+      if (scheduleMode === 'daily') {
+        nextExecuteAt.setDate(nextExecuteAt.getDate() + 1);
+      } else if (scheduleMode === 'weekly') {
+        nextExecuteAt.setDate(nextExecuteAt.getDate() + 7);
+      } else if (scheduleMode === 'monthly') {
+        nextExecuteAt.setMonth(nextExecuteAt.getMonth() + 1);
+      } else {
+        return executeAt;
+      }
+    }
+
+    return nextExecuteAt;
   }
 
   private matchRuleValue(value: string, matcher: string, expected: string) {
@@ -164,7 +195,7 @@ export class ClassificationTasksService {
   ) {
     const candidates = dataTypes
       .map((dataType) => {
-        const score = dataType.rules.reduce((total, rule) => {
+        const score = dataType.rules.reduce((bestScore, rule) => {
           const currentValue =
             rule.target === 'fieldComment'
               ? (column.columnComment ?? '')
@@ -176,9 +207,11 @@ export class ClassificationTasksService {
                     ? (table.tableComment ?? '')
                     : column.columnName;
 
-          return this.matchRuleValue(currentValue, rule.matcher, rule.value)
-            ? total + Number(rule.hitRate)
-            : total;
+          if (!this.matchRuleValue(currentValue, rule.matcher, rule.value)) {
+            return bestScore;
+          }
+
+          return Math.max(bestScore, Number(rule.hitRate));
         }, 0);
 
         return {
@@ -239,18 +272,24 @@ export class ClassificationTasksService {
     dto: CreateClassificationTaskDto,
   ): Promise<Prisma.ClassificationTaskUncheckedCreateInput> {
     const dataAssetIds = this.normalizeAssetIds(dto.dataAssetIds);
+    const defaultStatus =
+      dto.source === ClassificationTaskSource.ASSET_IMPORT &&
+      dataAssetIds.length === 0
+        ? ClassificationTaskStatus.WAITING_IMPORT
+        : ClassificationTaskStatus.PENDING;
 
     return {
       taskName: dto.taskName.trim(),
       dataSource: await this.resolveDataSource(dataAssetIds, dto.dataSource),
       dataAssetIds: dataAssetIds as Prisma.InputJsonValue,
       dataType: dto.dataType.trim(),
+      scheduleMode: dto.scheduleMode?.trim() || 'single',
       classificationType: dto.classificationType?.trim() || 'automatic',
       priority: dto.priority?.trim() || 'medium',
       description: dto.description?.trim() ?? '',
       source: dto.source ?? ClassificationTaskSource.CLASSIFICATION_CENTER,
       sourceLabel: dto.sourceLabel?.trim() || '任务中心',
-      status: dto.status ?? ClassificationTaskStatus.PENDING,
+      status: dto.status ?? defaultStatus,
       templateId: dto.templateId ?? null,
       creatorId: dto.creatorId ?? null,
       executeAt: this.parseExecuteAt(dto.executeAt) ?? null,
@@ -264,6 +303,8 @@ export class ClassificationTasksService {
 
     if (dto.taskName !== undefined) data.taskName = dto.taskName.trim();
     if (dto.dataType !== undefined) data.dataType = dto.dataType.trim();
+    if (dto.scheduleMode !== undefined)
+      data.scheduleMode = dto.scheduleMode.trim() || 'single';
     if (dto.classificationType !== undefined)
       data.classificationType = dto.classificationType.trim();
     if (dto.priority !== undefined) data.priority = dto.priority.trim();
@@ -339,10 +380,28 @@ export class ClassificationTasksService {
   }
 
   async create(dto: CreateClassificationTaskDto) {
-    return this.prisma.classificationTask.create({
+    const task = await this.prisma.classificationTask.create({
       data: await this.buildCreateData(dto),
       include: { template: true, creator: true },
     });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.CLASSIFICATION_TASK,
+      action: '创建分类分级任务',
+      result: AuditLogResult.SUCCESS,
+      actorId: task.creatorId,
+      actorName: task.creator?.name ?? '当前用户',
+      targetType: 'classification-task',
+      targetId: task.id,
+      targetName: task.taskName,
+      detail: task.description ?? '创建分类分级任务',
+      metadata: {
+        source: task.source,
+        executeAt: task.executeAt?.toISOString() ?? null,
+      },
+    });
+
+    return task;
   }
 
   async executeNow(id: string) {
@@ -356,7 +415,35 @@ export class ClassificationTasksService {
 
     await this.prisma.classificationTask.update({
       where: { id },
-      data: { status: ClassificationTaskStatus.RUNNING },
+      data: {
+        status: ClassificationTaskStatus.RUNNING,
+        ...(task.scheduleMode !== 'single' &&
+        task.executeAt &&
+        task.executeAt <= new Date()
+          ? {
+              executeAt: this.calculateNextExecuteAt(
+                task.scheduleMode,
+                task.executeAt,
+              ),
+            }
+          : {}),
+      },
+    });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.CLASSIFICATION_TASK,
+      action: '执行分类分级任务',
+      result: AuditLogResult.RUNNING,
+      actorId: task.creatorId,
+      actorName: task.creator?.name ?? '系统',
+      targetType: 'classification-task',
+      targetId: task.id,
+      targetName: task.taskName,
+      detail: '分类分级任务开始执行',
+      metadata: {
+        dataAssetCount: this.normalizeAssetIds(task.dataAssetIds).length,
+        source: task.source,
+      },
     });
 
     try {
@@ -416,7 +503,7 @@ export class ClassificationTasksService {
         });
       }
 
-      return this.prisma.classificationTask.update({
+      const completedTask = await this.prisma.classificationTask.update({
         where: { id },
         data: {
           dataSource: nextDataSource,
@@ -424,24 +511,101 @@ export class ClassificationTasksService {
         },
         include: { template: true, creator: true },
       });
+
+      await this.auditLogsService.record({
+        category: AuditLogCategory.CLASSIFICATION_TASK,
+        action: '执行分类分级任务',
+        result: AuditLogResult.SUCCESS,
+        actorId: completedTask.creatorId,
+        actorName: completedTask.creator?.name ?? '系统',
+        targetType: 'classification-task',
+        targetId: completedTask.id,
+        targetName: completedTask.taskName,
+        detail: '分类分级任务执行完成',
+        metadata: {
+          dataAssetCount: dataAssetIds.length,
+          templateId: completedTask.templateId,
+        },
+      });
+
+      return completedTask;
     } catch (error) {
       await this.prisma.classificationTask.update({
         where: { id },
         data: { status: ClassificationTaskStatus.FAILED },
+      });
+      await this.auditLogsService.record({
+        category: AuditLogCategory.CLASSIFICATION_TASK,
+        action: '执行分类分级任务',
+        result: AuditLogResult.FAILED,
+        actorId: task.creatorId,
+        actorName: task.creator?.name ?? '系统',
+        targetType: 'classification-task',
+        targetId: task.id,
+        targetName: task.taskName,
+        detail:
+          error instanceof Error ? error.message : '分类分级任务执行失败',
       });
       throw error;
     }
   }
 
   async update(id: string, dto: UpdateClassificationTaskDto) {
-    return this.prisma.classificationTask.update({
+    const currentTask = await this.prisma.classificationTask.findUnique({
       where: { id },
-      data: await this.buildUpdateData(dto),
+    });
+
+    const data = await this.buildUpdateData(dto);
+    if (currentTask && dto.status === undefined) {
+      const nextAssetIds =
+        dto.dataAssetIds !== undefined
+          ? this.normalizeAssetIds(dto.dataAssetIds)
+          : this.normalizeAssetIds(currentTask.dataAssetIds);
+
+      if (dto.executeAt !== undefined || dto.scheduleMode !== undefined) {
+        data.status =
+          currentTask.source === ClassificationTaskSource.ASSET_IMPORT &&
+          nextAssetIds.length === 0
+            ? ClassificationTaskStatus.WAITING_IMPORT
+            : ClassificationTaskStatus.PENDING;
+      }
+    }
+
+    const task = await this.prisma.classificationTask.update({
+      where: { id },
+      data,
       include: { template: true, creator: true },
     });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.CLASSIFICATION_TASK,
+      action: '更新分类分级任务',
+      result: AuditLogResult.SUCCESS,
+      actorId: task.creatorId,
+      actorName: task.creator?.name ?? '当前用户',
+      targetType: 'classification-task',
+      targetId: task.id,
+      targetName: task.taskName,
+      detail: task.description ?? '分类分级任务配置已更新',
+    });
+
+    return task;
   }
 
-  remove(id: string) {
-    return this.prisma.classificationTask.delete({ where: { id } });
+  async remove(id: string) {
+    const task = await this.prisma.classificationTask.delete({ where: { id } });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.CLASSIFICATION_TASK,
+      action: '删除分类分级任务',
+      result: AuditLogResult.SUCCESS,
+      actorName: '当前用户',
+      targetType: 'classification-task',
+      targetId: task.id,
+      targetName: task.taskName,
+      detail: '分类分级任务已删除',
+    });
+
+    return task;
   }
 }

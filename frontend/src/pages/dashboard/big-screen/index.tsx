@@ -16,6 +16,7 @@ import './index.less';
 const { Paragraph, Text, Title } = Typography;
 
 const statusLabelMap = {
+  waiting_import: '等待导入',
   pending: '待执行',
   running: '执行中',
   completed: '已完成',

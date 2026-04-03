@@ -1,4 +1,5 @@
 import { request } from '@/services/request';
+import { formatBeijingDateTime } from '@/utils/datetime';
 
 export type ProtectionFeatureType = 'masking' | 'encryption';
 export type ProtectionFeatureStatus = 'active' | 'inactive';
@@ -70,8 +71,6 @@ type BackendFeature = {
   updatedAt: string;
 };
 
-const formatDateTime = (value?: string) => (value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '');
-
 const mapFeature = (item: BackendFeature): ProtectionFeatureRecord => ({
   id: item.id,
   type: item.featureType === 'MASKING' ? 'masking' : 'encryption',
@@ -86,7 +85,7 @@ const mapFeature = (item: BackendFeature): ProtectionFeatureRecord => ({
   priority: item.priority ?? 0,
   status: item.status === 'ACTIVE' ? 'active' : 'inactive',
   description: item.description ?? '',
-  updatedAt: formatDateTime(item.updatedAt),
+  updatedAt: formatBeijingDateTime(item.updatedAt),
 });
 
 export const getProtectionFeatureMatcherLabel = (matcher: ProtectionFeatureMatcher): string => MATCHER_LABEL_MAP[matcher];

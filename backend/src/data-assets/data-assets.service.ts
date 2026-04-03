@@ -8,6 +8,17 @@ import { UpdateDataAssetDto } from './dto/update-data-asset.dto';
 export class DataAssetsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private getInclude() {
+    return {
+      assetGroup: true,
+      importTasks: {
+        where: { status: 'SUCCESS' as const },
+        orderBy: { updatedAt: 'desc' as const },
+        take: 1,
+      },
+    } as const;
+  }
+
   async seed() {
     const count = await this.prisma.dataAsset.count();
     if (count > 0) return;
@@ -41,7 +52,7 @@ export class DataAssetsService {
 
   async findAll() {
     return this.prisma.dataAsset.findMany({
-      include: { assetGroup: true },
+      include: this.getInclude(),
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -57,7 +68,7 @@ export class DataAssetsService {
         sizeBytes: dto.sizeBytes ?? 0,
         recordCount: dto.recordCount ?? 0,
       },
-      include: { assetGroup: true },
+      include: this.getInclude(),
     });
   }
 
@@ -68,7 +79,7 @@ export class DataAssetsService {
         ...dto,
         tags: dto.tags,
       },
-      include: { assetGroup: true },
+      include: this.getInclude(),
     });
   }
 

@@ -1,9 +1,16 @@
 import { listDataAssets } from "@/services/data-assets/dataAssetStore";
 import { request } from "@/services/request";
+import { formatBeijingDateTime } from "@/utils/datetime";
 
 export type ClassificationTaskDataType = "database" | "file" | "api";
 export type ClassificationType = "automatic" | "manual" | "hybrid";
+export type ClassificationTaskScheduleMode =
+  | "single"
+  | "daily"
+  | "weekly"
+  | "monthly";
 export type ClassificationTaskStatus =
+  | "waiting_import"
   | "pending"
   | "running"
   | "completed"
@@ -17,6 +24,7 @@ export interface ClassificationTaskRecord {
   taskName: string;
   dataSource: string;
   dataType: ClassificationTaskDataType;
+  scheduleMode: ClassificationTaskScheduleMode;
   dataAssetIds: string[];
   dataAssetNames: string[];
   classificationType: ClassificationType;
@@ -40,6 +48,7 @@ export interface ClassificationTaskRecord {
 export interface ClassificationTaskFormValues {
   taskName: string;
   dataType: ClassificationTaskDataType;
+  scheduleMode?: ClassificationTaskScheduleMode;
   dataAssetIds: string[];
   templateId?: string;
   templateName?: string;
@@ -56,12 +65,13 @@ type BackendClassificationTask = {
   dataSource: string;
   dataAssetIds?: unknown;
   dataType: string;
+  scheduleMode?: string | null;
   classificationType: string;
   priority: string;
   description?: string | null;
   source: "CLASSIFICATION_CENTER" | "ASSET_IMPORT";
   sourceLabel?: string | null;
-  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  status: "WAITING_IMPORT" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
   templateId?: string | null;
   creatorId?: string | null;
   executeAt?: string | null;
@@ -69,14 +79,6 @@ type BackendClassificationTask = {
   template?: { id: string; templateName: string } | null;
   creator?: { id: string; name: string } | null;
 };
-
-const formatDateTime = (value?: string) =>
-  value
-    ? value
-        .replace("T", " ")
-        .replace(/\.\d{3}Z$/, "")
-        .replace("Z", "")
-    : "";
 
 const normalizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -91,10 +93,20 @@ const normalizeStringArray = (value: unknown): string[] => {
   );
 };
 
+const normalizeScheduleMode = (
+  value?: string | null
+): ClassificationTaskScheduleMode => {
+  if (value === "daily" || value === "weekly" || value === "monthly") {
+    return value;
+  }
+  return "single";
+};
+
 const statusMap: Record<
   BackendClassificationTask["status"],
   ClassificationTaskStatus
 > = {
+  WAITING_IMPORT: "waiting_import",
   PENDING: "pending",
   RUNNING: "running",
   COMPLETED: "completed",
@@ -105,6 +117,7 @@ const reverseStatusMap: Record<
   Exclude<ClassificationTaskStatus, "stopped">,
   BackendClassificationTask["status"]
 > = {
+  waiting_import: "WAITING_IMPORT",
   pending: "PENDING",
   running: "RUNNING",
   completed: "COMPLETED",
@@ -150,13 +163,17 @@ const mapTask = (
     dataSource:
       dataAssetNames.join("、") || item.dataSource || "未关联数据资产",
     dataType: (item.dataType || "database") as ClassificationTaskDataType,
+    scheduleMode: normalizeScheduleMode(item.scheduleMode),
     dataAssetIds,
     dataAssetNames,
     classificationType: (item.classificationType ||
       "automatic") as ClassificationType,
     status: statusMap[item.status],
     progress,
-    totalRecords: item.status === "PENDING" ? 0 : 10000,
+    totalRecords:
+      item.status === "PENDING" || item.status === "WAITING_IMPORT"
+        ? 0
+        : 10000,
     processedRecords:
       item.status === "COMPLETED"
         ? 10000
@@ -166,16 +183,20 @@ const mapTask = (
     classifiedRecords:
       item.status === "COMPLETED" ? 9400 : item.status === "RUNNING" ? 5600 : 0,
     accuracy:
-      item.status === "PENDING" ? 0 : item.status === "RUNNING" ? 92 : 95,
+      item.status === "PENDING" || item.status === "WAITING_IMPORT"
+        ? 0
+        : item.status === "RUNNING"
+        ? 92
+        : 95,
     creator: item.creator?.name ?? "当前用户",
-    createTime: formatDateTime(item.createdAt),
+    createTime: formatBeijingDateTime(item.createdAt),
     priority: (item.priority || "medium") as ClassificationTaskPriority,
     description: item.description ?? "",
     taskSource: sourceMap[item.source],
     sourceLabel: item.sourceLabel ?? "任务中心",
     templateId: item.templateId ?? undefined,
     templateName: item.template?.templateName ?? undefined,
-    executeAt: formatDateTime(item.executeAt ?? undefined) || undefined,
+    executeAt: formatBeijingDateTime(item.executeAt ?? undefined) || undefined,
   };
 };
 
@@ -220,6 +241,7 @@ export const createClassificationTask = async (
         dataSource: values.dataSource?.trim() ?? "",
         dataAssetIds: values.dataAssetIds,
         dataType: values.dataType,
+        scheduleMode: values.scheduleMode ?? "single",
         classificationType: values.classificationType ?? "automatic",
         priority: values.priority ?? "medium",
         description: values.description?.trim() ?? "",
@@ -250,6 +272,7 @@ export const updateClassificationTask = async (
         dataSource: values.dataSource?.trim() ?? "",
         dataAssetIds: values.dataAssetIds,
         dataType: values.dataType,
+        scheduleMode: values.scheduleMode ?? "single",
         classificationType: values.classificationType ?? "automatic",
         priority: values.priority ?? "medium",
         description: values.description?.trim() ?? "",
@@ -283,4 +306,13 @@ export const updateClassificationTaskStatus = async (
   ]);
 
   return mapTask(data, assetNameMap);
+};
+
+export const deleteClassificationTask = async (
+  taskId: string
+): Promise<boolean> => {
+  await request(`/api/classification-tasks/${taskId}`, {
+    method: "DELETE",
+  });
+  return true;
 };

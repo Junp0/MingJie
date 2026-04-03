@@ -28,6 +28,11 @@ export class CreateClassificationTaskDto {
   @IsString()
   dataType!: string;
 
+  @ApiPropertyOptional({ example: 'single', default: 'single' })
+  @IsOptional()
+  @IsString()
+  scheduleMode?: string;
+
   @ApiPropertyOptional({ example: 'automatic' })
   @IsOptional()
   @IsString()

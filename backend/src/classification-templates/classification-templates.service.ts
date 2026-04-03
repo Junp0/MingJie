@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { TemplateStatus } from '@prisma/client';
+import { AuditLogCategory, AuditLogResult, TemplateStatus } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassificationTemplateDto } from './dto/create-classification-template.dto';
 import { UpdateClassificationTemplateDto } from './dto/update-classification-template.dto';
@@ -46,7 +47,10 @@ type DefaultDataTypeDefinition = {
 
 @Injectable()
 export class ClassificationTemplatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   private getInclude() {
     return {
@@ -538,7 +542,21 @@ export class ClassificationTemplatesService {
       },
     });
 
-    return this.findOne(template.id);
+    const created = await this.findOne(template.id);
+    if (created) {
+      await this.auditLogsService.record({
+        category: AuditLogCategory.TEMPLATE,
+        action: '创建分类模板',
+        result: AuditLogResult.SUCCESS,
+        actorName: '当前用户',
+        targetType: 'classification-template',
+        targetId: created.id,
+        targetName: created.templateName,
+        detail: created.description ?? '新建分类模板',
+      });
+    }
+
+    return created;
   }
 
   async update(id: string, dto: UpdateClassificationTemplateDto) {
@@ -552,10 +570,28 @@ export class ClassificationTemplatesService {
       },
     });
 
-    return this.findOne(id);
+    const updated = await this.findOne(id);
+    if (updated) {
+      await this.auditLogsService.record({
+        category: AuditLogCategory.TEMPLATE,
+        action: '更新分类模板',
+        result: AuditLogResult.SUCCESS,
+        actorName: '当前用户',
+        targetType: 'classification-template',
+        targetId: updated.id,
+        targetName: updated.templateName,
+        detail: updated.description ?? '更新模板配置',
+      });
+    }
+
+    return updated;
   }
 
   async remove(id: string) {
+    const template = await this.prisma.classificationTemplate.findUnique({
+      where: { id },
+    });
+
     await this.prisma.classificationRule.deleteMany({
       where: {
         dataType: {
@@ -574,6 +610,17 @@ export class ClassificationTemplatesService {
     });
     await this.prisma.classificationTemplate.delete({
       where: { id },
+    });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.TEMPLATE,
+      action: '删除分类模板',
+      result: AuditLogResult.SUCCESS,
+      actorName: '当前用户',
+      targetType: 'classification-template',
+      targetId: id,
+      targetName: template?.templateName ?? '未知模板',
+      detail: '分类模板及其明细已删除',
     });
 
     return { success: true };
@@ -605,6 +652,20 @@ export class ClassificationTemplatesService {
     });
 
     await this.populateDefaultTemplate(id);
-    return this.findOne(id);
+    const initialized = await this.findOne(id);
+    if (initialized) {
+      await this.auditLogsService.record({
+        category: AuditLogCategory.TEMPLATE,
+        action: '初始化分类模板',
+        result: AuditLogResult.SUCCESS,
+        actorName: '当前用户',
+        targetType: 'classification-template',
+        targetId: initialized.id,
+        targetName: initialized.templateName,
+        detail: '模板目录、级别和规则已恢复到默认基线',
+      });
+    }
+
+    return initialized;
   }
 }

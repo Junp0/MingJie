@@ -1,10 +1,12 @@
 import { listDataAssets } from "@/services/data-assets/dataAssetStore";
 import {
   createClassificationTask,
+  deleteClassificationTask,
   listClassificationTasks,
   updateClassificationTask,
   type ClassificationTaskFormValues,
   type ClassificationTaskRecord,
+  type ClassificationTaskScheduleMode,
 } from "@/services/data-classification/classificationTaskStore";
 import { listClassificationTemplates } from "@/services/data-classification/templateStore";
 import type { ActionType, ProColumns } from "@ant-design/pro-components";
@@ -26,10 +28,12 @@ import {
 } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import React, { useRef, useState } from "react";
+import { parseBeijingDateTime } from "@/utils/datetime";
 
 type TaskModalFormValues = {
   taskName: string;
   dataType: ClassificationTaskFormValues["dataType"];
+  scheduleMode: ClassificationTaskScheduleMode;
   dataAssetIds: string[];
   templateId?: string;
   executeAt?: Dayjs;
@@ -43,7 +47,22 @@ const DATA_TYPE_OPTIONS = [
   { value: "api", label: "API" },
 ] as const;
 
+const SCHEDULE_MODE_OPTIONS = [
+  { value: "single", label: "单次执行" },
+  { value: "daily", label: "每日" },
+  { value: "weekly", label: "每周" },
+  { value: "monthly", label: "每月" },
+] as const;
+
+const SCHEDULE_MODE_LABEL_MAP: Record<ClassificationTaskScheduleMode, string> = {
+  single: "单次执行",
+  daily: "每日",
+  weekly: "每周",
+  monthly: "每月",
+};
+
 const STATUS_TEXT_MAP: Record<ClassificationTaskRecord["status"], string> = {
+  waiting_import: "等待导入",
   pending: "待执行",
   running: "执行中",
   completed: "已完成",
@@ -55,6 +74,7 @@ const STATUS_BADGE_MAP: Record<
   ClassificationTaskRecord["status"],
   "default" | "processing" | "success" | "error" | "warning"
 > = {
+  waiting_import: "warning",
   pending: "default",
   running: "processing",
   completed: "success",
@@ -138,6 +158,7 @@ const ClassificationTasks: React.FC = () => {
     form.setFieldsValue({
       taskName: "",
       dataType: "database",
+      scheduleMode: "single",
       dataAssetIds: [],
       templateId: undefined,
       executeAt: undefined,
@@ -151,9 +172,12 @@ const ClassificationTasks: React.FC = () => {
     form.setFieldsValue({
       taskName: record.taskName,
       dataType: record.dataType,
+      scheduleMode: record.scheduleMode,
       dataAssetIds: record.dataAssetIds,
       templateId: record.templateId,
-      executeAt: record.executeAt ? dayjs(record.executeAt) : undefined,
+      executeAt: record.executeAt
+        ? parseBeijingDateTime(record.executeAt) ?? undefined
+        : undefined,
     });
   };
 
@@ -163,6 +187,7 @@ const ClassificationTasks: React.FC = () => {
       const payload: ClassificationTaskFormValues = {
         taskName: values.taskName,
         dataType: values.dataType,
+        scheduleMode: values.scheduleMode,
         dataAssetIds: values.dataAssetIds,
         templateId: values.templateId,
         executeAt: values.executeAt?.format("YYYY-MM-DD HH:mm:ss"),
@@ -233,6 +258,19 @@ const ClassificationTasks: React.FC = () => {
       render: (_, record) => record.templateName || "-",
     },
     {
+      title: "执行策略",
+      dataIndex: "scheduleMode",
+      valueType: "select",
+      align: "center",
+      valueEnum: {
+        single: { text: "单次执行" },
+        daily: { text: "每日" },
+        weekly: { text: "每周" },
+        monthly: { text: "每月" },
+      },
+      render: (_, record) => SCHEDULE_MODE_LABEL_MAP[record.scheduleMode],
+    },
+    {
       title: "任务执行时间",
       dataIndex: "executeAt",
       search: false,
@@ -244,6 +282,7 @@ const ClassificationTasks: React.FC = () => {
       dataIndex: "status",
       valueType: "select",
       valueEnum: {
+        waiting_import: { text: "等待导入" },
         pending: { text: "待执行" },
         running: { text: "执行中" },
         completed: { text: "已完成" },
@@ -307,6 +346,36 @@ const ClassificationTasks: React.FC = () => {
           onClick={() => openEditModal(record)}
         >
           编辑
+        </Button>,
+        <Button
+          key="delete"
+          danger
+          type="link"
+          size="small"
+          style={{ padding: 0 }}
+          onClick={() => {
+            Modal.confirm({
+              title: "确认删除分类分级任务",
+              content:
+                "删除后将移除该分类分级任务本身，但不会删除已经导入的数据资产。",
+              okText: "确认删除",
+              cancelText: "取消",
+              okButtonProps: { danger: true },
+              onOk: async () => {
+                await deleteClassificationTask(record.id);
+                if (detailTask?.id === record.id) {
+                  setDetailTask(null);
+                }
+                if (editingTask?.id === record.id) {
+                  closeTaskModal();
+                }
+                messageApi.success("分类分级任务已删除");
+                actionRef.current?.reload();
+              },
+            });
+          }}
+        >
+          删除
         </Button>,
       ],
       align: "center",
@@ -384,6 +453,15 @@ const ClassificationTasks: React.FC = () => {
             <Select options={DATA_TYPE_OPTIONS.map((item) => ({ ...item }))} />
           </Form.Item>
           <Form.Item
+            label="执行策略"
+            name="scheduleMode"
+            rules={[{ required: true, message: "请选择执行策略" }]}
+          >
+            <Select
+              options={SCHEDULE_MODE_OPTIONS.map((item) => ({ ...item }))}
+            />
+          </Form.Item>
+          <Form.Item
             label="数据资产"
             name="dataAssetIds"
             rules={[
@@ -458,6 +536,9 @@ const ClassificationTasks: React.FC = () => {
             </Descriptions.Item>
             <Descriptions.Item label="关联模板">
               {detailTask.templateName || "-"}
+            </Descriptions.Item>
+            <Descriptions.Item label="执行策略">
+              {SCHEDULE_MODE_LABEL_MAP[detailTask.scheduleMode]}
             </Descriptions.Item>
             <Descriptions.Item label="任务执行时间">
               {detailTask.executeAt || "-"}

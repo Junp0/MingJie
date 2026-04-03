@@ -1,4 +1,5 @@
 import { request } from '@/services/request';
+import { formatBeijingDateTime } from '@/utils/datetime';
 
 export type TemplateStatus = 'active' | 'inactive' | 'draft';
 export type LevelCode = string;
@@ -229,7 +230,6 @@ const RULE_MATCHER_LABEL_MAP: Record<RuleMatcher, string> = { regex: '正则匹�
 const statusMap: Record<BackendTemplate['status'], TemplateStatus> = { ACTIVE: 'active', INACTIVE: 'inactive', DRAFT: 'draft' };
 const reverseStatusMap: Record<TemplateStatus, BackendTemplate['status']> = { active: 'ACTIVE', inactive: 'INACTIVE', draft: 'DRAFT' };
 
-const formatDateTime = (value?: string) => (value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '');
 const createId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const normalizeColor = (color?: string | null, levelCode?: string) => {
@@ -332,8 +332,8 @@ const mapTemplateRecord = (item: BackendTemplate): ClassificationTemplateRecord 
     status: statusMap[item.status],
     templateType: item.templateType ?? '自定义模板',
     creator: '当前用户',
-    createdAt: formatDateTime(item.createdAt),
-    updatedAt: formatDateTime(item.updatedAt),
+    createdAt: formatBeijingDateTime(item.createdAt),
+    updatedAt: formatBeijingDateTime(item.updatedAt),
     description: item.description ?? '',
     categories: buildTree(item.categories ?? [], item.dataTypes ?? [], item.levelDefinitions ?? []),
     levelDefinitions: normalizedLevels,

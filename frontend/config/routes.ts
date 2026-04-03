@@ -184,6 +184,12 @@ export default [
     ],
   },
   {
+    path: '/audit-logs',
+    icon: 'fileSearch',
+    name: 'audit-logs',
+    component: './audit-logs',
+  },
+  {
     path: '/',
     redirect: '/dashboard/analysis',
   },

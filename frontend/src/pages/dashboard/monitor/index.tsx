@@ -12,6 +12,7 @@ import { useDashboardData } from '../shared/useDashboardData';
 const { Paragraph, Text } = Typography;
 
 const statusBadgeMap = {
+  waiting_import: 'warning',
   pending: 'default',
   running: 'processing',
   completed: 'success',

@@ -1,4 +1,5 @@
 import { request } from '@/services/request';
+import { formatBeijingDateTime } from '@/utils/datetime';
 
 export type AssetGroupStatus = 'active' | 'inactive' | 'archived';
 
@@ -39,11 +40,6 @@ type BackendAssetGroup = {
   updatedAt?: string;
 };
 
-const formatDateTime = (value?: string) => {
-  if (!value) return '';
-  return value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '');
-};
-
 const statusMap: Record<NonNullable<BackendAssetGroup['status']>, AssetGroupStatus> = {
   ACTIVE: 'active',
   INACTIVE: 'inactive',
@@ -65,8 +61,8 @@ const mapAssetGroup = (item: BackendAssetGroup): AssetGroup => ({
   owner: item.owner ?? '',
   department: item.department ?? '',
   status: item.status ? statusMap[item.status] : 'active',
-  createTime: formatDateTime(item.createdAt),
-  updateTime: formatDateTime(item.updatedAt),
+  createTime: formatBeijingDateTime(item.createdAt),
+  updateTime: formatBeijingDateTime(item.updatedAt),
   databaseCount: 0,
   tableCount: 0,
   fieldCount: 0,

@@ -1,6 +1,6 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { Badge, Button, Drawer, Table, Tag, message } from 'antd';
+import { Button, Drawer, Table, message } from 'antd';
 import React, { useRef, useState } from 'react';
 import {
   listMissedDataItems,
@@ -45,50 +45,17 @@ const MissedDataList: React.FC = () => {
     { title: '数据类型', dataIndex: 'dataType', valueType: 'text', align: 'center' },
     { title: '所属分组', dataIndex: 'groupName', valueType: 'text', align: 'center' },
     {
-      title: '缺失次数',
-      dataIndex: 'missCount',
-      valueType: 'digit',
-      align: 'center',
-    },
-    {
-      title: '缺失率',
-      dataIndex: 'missRate',
-      valueType: 'digit',
-      align: 'center',
-      render: (_, record) => `${record.missRate}%`,
-    },
-    {
-      title: '来源',
-      dataIndex: 'source',
+      title: '最接近分类规则',
+      dataIndex: 'closestClassificationRule',
       valueType: 'text',
       align: 'center',
     },
     {
-      title: '优先级',
-      dataIndex: 'priority',
+      title: '命中率',
+      dataIndex: 'hitRate',
+      valueType: 'digit',
       align: 'center',
-      render: (_, record) => {
-        const colorMap = {
-          high: 'red',
-          medium: 'orange',
-          low: 'blue',
-        } as const;
-        return <Tag color={colorMap[record.priority]}>{record.priority}</Tag>;
-      },
-    },
-    {
-      title: '风险状态',
-      dataIndex: 'status',
-      align: 'center',
-      render: (_, record) => {
-        const statusMap = {
-          high: { status: 'error', text: '高' },
-          medium: { status: 'warning', text: '中' },
-          low: { status: 'success', text: '低' },
-        } as const;
-        const status = statusMap[record.status];
-        return <Badge status={status.status as never} text={status.text} />;
-      },
+      render: (_, record) => `${record.hitRate}%`,
     },
     {
       title: '样本',
@@ -161,9 +128,7 @@ const MissedDataList: React.FC = () => {
               fieldTable,
               dataType,
               groupName,
-              status,
-              priority,
-              source,
+              closestClassificationRule,
             } = params as Record<string, any>;
 
             const rows = await listMissedDataItems();
@@ -173,9 +138,11 @@ const MissedDataList: React.FC = () => {
             if (fieldTable) filteredData = filteredData.filter((item) => item.fieldTable.includes(String(fieldTable)));
             if (dataType) filteredData = filteredData.filter((item) => item.dataType === dataType);
             if (groupName) filteredData = filteredData.filter((item) => item.groupName === groupName);
-            if (status) filteredData = filteredData.filter((item) => item.status === status);
-            if (priority) filteredData = filteredData.filter((item) => item.priority === priority);
-            if (source) filteredData = filteredData.filter((item) => item.source === source);
+            if (closestClassificationRule) {
+              filteredData = filteredData.filter((item) =>
+                item.closestClassificationRule.includes(String(closestClassificationRule)),
+              );
+            }
 
             return {
               data: filteredData,

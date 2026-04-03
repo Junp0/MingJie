@@ -31,12 +31,9 @@ export interface FullDataItem {
 
 export interface MissedDataItem extends Omit<FullDataItem, 'status'> {
   key: string;
-  missCount: number;
-  missRate: number;
   lastCheckTime: string;
-  status: 'high' | 'medium' | 'low';
-  source: string;
-  priority: 'high' | 'medium' | 'low';
+  closestClassificationRule: string;
+  hitRate: number;
 }
 
 export interface TableFieldItem {
@@ -78,6 +75,7 @@ export interface DatabaseItem {
   assetId: string;
   assetName: string;
   name: string;
+  port: number;
   type: string;
   status: 'online' | 'offline';
   tables: TableItem[];
@@ -85,6 +83,7 @@ export interface DatabaseItem {
 
 export interface DatabaseInstance {
   ip: string;
+  port: number;
   status: 'online' | 'offline';
   databases: DatabaseItem[];
 }

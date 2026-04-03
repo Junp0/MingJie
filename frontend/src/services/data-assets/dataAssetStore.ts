@@ -1,4 +1,5 @@
 import { request } from '@/services/request';
+import { formatBeijingDateTime } from '@/utils/datetime';
 
 export type DataAssetType = 'database' | 'table' | 'file' | 'api' | 'message_queue';
 export type DataAssetStatus = 'active' | 'inactive' | 'archived';
@@ -116,9 +117,8 @@ type BackendAsset = {
   createdAt: string;
   updatedAt: string;
   assetGroup?: { id: string; name: string };
+  importTasks?: Array<{ id: string; updatedAt: string }>;
 };
-
-const formatDateTime = (value?: string) => (value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '');
 
 const statusMap: Record<BackendAsset['status'], DataAssetStatus> = {
   ACTIVE: 'active',
@@ -146,32 +146,42 @@ const reverseLevelMap: Record<DataAssetLevel, BackendAsset['dataLevel']> = {
   secret: 'SECRET',
 };
 
-const mapAsset = (item: BackendAsset): DataAssetRecord => ({
-  id: item.id,
-  name: item.name,
-  assetType: 'database',
-  ipAddress: item.ipAddress,
-  port: item.port,
-  sourceType: (item.sourceType || 'MySQL') as DataAssetSourceType,
-  status: statusMap[item.status],
-  dataLevel: levelMap[item.dataLevel],
-  assetGroupId: item.assetGroupId,
-  assetGroupName: item.assetGroup?.name ?? '',
-  createTime: formatDateTime(item.createdAt),
-  updateTime: formatDateTime(item.updatedAt),
-  lastSyncTime: formatDateTime(item.updatedAt),
-  syncStatus: 'success',
-  tableCount: item.tableCount ?? 0,
-  fieldCount: item.fieldCount ?? 0,
-  size: item.sizeBytes ?? 0,
-  recordCount: item.recordCount ?? 0,
-  description: item.description ?? '',
-  tags: Array.isArray(item.tags) ? item.tags : [],
-  owner: item.owner,
-  department: item.department,
-  sourceFrom: item.scanResultId ? 'scan' : item.sourceDatabaseName ? 'import' : 'manual',
-  scanResultId: item.scanResultId ?? undefined,
-});
+const mapAsset = (item: BackendAsset): DataAssetRecord => {
+  const latestSuccessfulImportTime = item.importTasks?.[0]?.updatedAt;
+
+  return {
+    id: item.id,
+    name: item.name,
+    assetType: 'database',
+    ipAddress: item.ipAddress,
+    port: item.port,
+    sourceType: (item.sourceType || 'MySQL') as DataAssetSourceType,
+    status: statusMap[item.status],
+    dataLevel: levelMap[item.dataLevel],
+    assetGroupId: item.assetGroupId,
+    assetGroupName: item.assetGroup?.name ?? '',
+    createTime: formatBeijingDateTime(item.createdAt),
+    updateTime: formatBeijingDateTime(item.updatedAt),
+    lastSyncTime: latestSuccessfulImportTime
+      ? formatBeijingDateTime(latestSuccessfulImportTime)
+      : '',
+    syncStatus: 'success',
+    tableCount: item.tableCount ?? 0,
+    fieldCount: item.fieldCount ?? 0,
+    size: item.sizeBytes ?? 0,
+    recordCount: item.recordCount ?? 0,
+    description: item.description ?? '',
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    owner: item.owner,
+    department: item.department,
+    sourceFrom: item.scanResultId
+      ? 'scan'
+      : item.sourceDatabaseName
+      ? 'import'
+      : 'manual',
+    scanResultId: item.scanResultId ?? undefined,
+  };
+};
 
 export const listDataAssets = async (): Promise<DataAssetRecord[]> => {
   const data = await request<BackendAsset[]>('/api/data-assets');

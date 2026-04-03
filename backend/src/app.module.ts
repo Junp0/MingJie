@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppInitializationService } from './app-initialization.service';
+import { AuditLogsModule } from './audit-logs/audit-logs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -13,10 +14,12 @@ import { ProtectionFeaturesModule } from './protection-features/protection-featu
 import { AutoScanModule } from './auto-scan/auto-scan.module';
 import { ClassificationTemplateDetailsModule } from './classification-template-details/classification-template-details.module';
 import { DataOverviewModule } from './data-overview/data-overview.module';
+import { TaskSchedulerService } from './task-scheduler/task-scheduler.service';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AuditLogsModule,
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -30,6 +33,6 @@ import { DataOverviewModule } from './data-overview/data-overview.module';
     ClassificationTemplateDetailsModule,
     DataOverviewModule,
   ],
-  providers: [AppInitializationService],
+  providers: [AppInitializationService, TaskSchedulerService],
 })
 export class AppModule {}

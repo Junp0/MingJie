@@ -21,4 +21,5 @@ export default {
   'menu.data-classification.encryption-features': '加密特征',
   'menu.data-classification.template-detail': '模版详情',
   'menu.data-classification.template-add': '新增模版',
+  'menu.audit-logs': '审计日志',
 };

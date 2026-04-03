@@ -2,18 +2,19 @@ import { listAssetGroupSelectOptions } from "@/services/data-assets/assetGroupSt
 import {
   createImportTask,
   discoverImportDatabases,
-  linkClassificationTaskToImport,
   type DataAssetImportFormValues,
   type DiscoverImportDatabasesValues,
   type ImportScheduleMode,
+  type ImportSampleStorageMode,
+  type ImportSampleStrategy,
   type ImportSourceType,
 } from "@/services/data-assets/importTaskStore";
 import {
   createClassificationTask,
   listClassificationTasks,
-  updateClassificationTask,
   type ClassificationTaskDataType,
   type ClassificationTaskRecord,
+  type ClassificationTaskScheduleMode,
 } from "@/services/data-classification/classificationTaskStore";
 import { listClassificationTemplates } from "@/services/data-classification/templateStore";
 import {
@@ -56,6 +57,9 @@ interface ImportWorkflowFormValues
   extends Omit<DataAssetImportFormValues, "executeAt" | "description"> {
   executeAt?: dayjs.Dayjs;
   description?: string;
+  sampleCount: number;
+  sampleStrategy: ImportSampleStrategy;
+  sampleStorageMode: ImportSampleStorageMode;
   runImportImmediately: boolean;
   createClassificationTask: boolean;
   runClassificationImmediatelyAfterImport: boolean;
@@ -63,6 +67,7 @@ interface ImportWorkflowFormValues
   existingClassificationTaskId?: string;
   classificationTaskName?: string;
   classificationTemplateId?: string;
+  classificationScheduleMode?: ClassificationTaskScheduleMode;
   classificationExecuteAt?: dayjs.Dayjs;
 }
 
@@ -111,6 +116,22 @@ const SCHEDULE_MODE_OPTIONS: Array<{
   { value: "monthly", label: "每月" },
 ];
 
+const SAMPLE_STRATEGY_OPTIONS: Array<{
+  value: ImportSampleStrategy;
+  label: string;
+}> = [
+  { value: "latest", label: "只抽取最新" },
+  { value: "random", label: "随机抽取" },
+];
+
+const SAMPLE_STORAGE_MODE_OPTIONS: Array<{
+  value: ImportSampleStorageMode;
+  label: string;
+}> = [
+  { value: "replace", label: "存量替换" },
+  { value: "incremental", label: "增量存储" },
+];
+
 const mapImportSourceTypeToTaskDataType = (
   sourceType: ImportSourceType
 ): ClassificationTaskDataType => {
@@ -128,6 +149,16 @@ const TASK_MODE_OPTIONS = [
   { value: "new", label: "新建分类任务" },
   { value: "existing", label: "关联已有任务" },
 ] as const;
+
+const CLASSIFICATION_SCHEDULE_MODE_OPTIONS: Array<{
+  value: ClassificationTaskScheduleMode;
+  label: string;
+}> = [
+  { value: "single", label: "单次执行" },
+  { value: "daily", label: "每日" },
+  { value: "weekly", label: "每周" },
+  { value: "monthly", label: "每月" },
+];
 
 const mapTaskDataTypeToLabel = (value?: ClassificationTaskDataType) => {
   if (value === "database") return "数据库";
@@ -296,6 +327,8 @@ const DataImportForm: React.FC = () => {
       form.getFieldValue("executeAt")
     ) {
       form.setFieldsValue({
+        classificationScheduleMode:
+          form.getFieldValue("classificationScheduleMode") ?? "single",
         classificationExecuteAt: form.getFieldValue("executeAt"),
       });
     }
@@ -406,6 +439,9 @@ const DataImportForm: React.FC = () => {
       "assetGroupId",
       "scheduleMode",
       "executeAt",
+      "sampleCount",
+      "sampleStrategy",
+      "sampleStorageMode",
     ]);
   };
 
@@ -424,6 +460,7 @@ const DataImportForm: React.FC = () => {
     await form.validateFields([
       "classificationTaskName",
       "classificationTemplateId",
+      "classificationScheduleMode",
       "classificationExecuteAt",
     ]);
   };
@@ -445,6 +482,51 @@ const DataImportForm: React.FC = () => {
 
       setSubmitting(true);
 
+      let linkedClassificationTaskId: string | undefined;
+
+      if (values.createClassificationTask) {
+        if ((values.classificationTaskMode ?? "new") === "existing") {
+          const existingTask = classificationTasks.find(
+            (task) => task.id === values.existingClassificationTaskId
+          );
+
+          if (!existingTask) {
+            throw new Error("Selected classification task not found");
+          }
+
+          linkedClassificationTaskId = existingTask.id;
+        } else {
+          const selectedTemplate = templateOptions.find(
+            (template) => template.value === values.classificationTemplateId
+          );
+
+          const classificationTask = await createClassificationTask(
+            {
+              taskName:
+                values.classificationTaskName ??
+                `${values.sourceName}_数据分类分级任务`,
+              dataSource: values.sourceName,
+              dataType: mapImportSourceTypeToTaskDataType(values.sourceType),
+              dataAssetIds: [],
+              classificationType: "automatic",
+              templateId: values.classificationTemplateId,
+              templateName: selectedTemplate?.label,
+              scheduleMode: values.classificationScheduleMode ?? "single",
+              executeAt: values.classificationExecuteAt?.format(
+                "YYYY-MM-DD HH:mm:ss"
+              ),
+            },
+            {
+              taskSource: "asset-import",
+              sourceLabel: "导入流程",
+              creator: "当前用户",
+            }
+          );
+
+          linkedClassificationTaskId = classificationTask.id;
+        }
+      }
+
       const importTask = await createImportTask(
         {
           sourceName: values.sourceName,
@@ -461,85 +543,20 @@ const DataImportForm: React.FC = () => {
               ?.label ?? "未分组",
           scheduleMode: values.scheduleMode,
           executeAt: values.executeAt?.format("YYYY-MM-DD HH:mm:ss"),
+          sampleCount: values.sampleCount,
+          sampleStrategy: values.sampleStrategy,
+          sampleStorageMode: values.sampleStorageMode,
           description: values.description ?? "",
         },
         {
           creator: "当前用户",
+          classificationTaskId: linkedClassificationTaskId,
           runImmediately: values.runImportImmediately,
           runClassificationImmediatelyAfterImport:
             values.createClassificationTask &&
             values.runClassificationImmediatelyAfterImport,
         }
       );
-
-      let linkedClassificationTaskId: string | undefined;
-
-      if (values.createClassificationTask) {
-        if ((values.classificationTaskMode ?? "new") === "existing") {
-          const existingTask = classificationTasks.find(
-            (task) => task.id === values.existingClassificationTaskId
-          );
-
-          if (!existingTask) {
-            throw new Error("Selected classification task not found");
-          }
-
-          const nextDataAssetIds = Array.from(
-            new Set([
-              ...existingTask.dataAssetIds,
-              ...(importTask.dataAssetId ? [importTask.dataAssetId] : []),
-            ])
-          );
-
-          await updateClassificationTask(existingTask.id, {
-            taskName: existingTask.taskName,
-            dataType: existingTask.dataType,
-            dataAssetIds: nextDataAssetIds,
-            templateId: existingTask.templateId,
-            executeAt: existingTask.executeAt,
-            classificationType: existingTask.classificationType,
-            priority: existingTask.priority,
-            description: existingTask.description,
-          });
-
-          linkedClassificationTaskId = existingTask.id;
-          await linkClassificationTaskToImport(importTask.id, existingTask.id);
-        } else {
-          const selectedTemplate = templateOptions.find(
-            (template) => template.value === values.classificationTemplateId
-          );
-
-          const classificationTask = await createClassificationTask(
-            {
-              taskName:
-                values.classificationTaskName ??
-                `${values.sourceName}_数据分类分级任务`,
-              dataSource: values.sourceName,
-              dataType: mapImportSourceTypeToTaskDataType(values.sourceType),
-              dataAssetIds: importTask.dataAssetId
-                ? [importTask.dataAssetId]
-                : [],
-              classificationType: "automatic",
-              templateId: values.classificationTemplateId,
-              templateName: selectedTemplate?.label,
-              executeAt: values.classificationExecuteAt?.format(
-                "YYYY-MM-DD HH:mm:ss"
-              ),
-            },
-            {
-              taskSource: "asset-import",
-              sourceLabel: "导入流程",
-              creator: "当前用户",
-            }
-          );
-
-          linkedClassificationTaskId = classificationTask.id;
-          await linkClassificationTaskToImport(
-            importTask.id,
-            classificationTask.id
-          );
-        }
-      }
 
       messageApi.success(
         linkedClassificationTaskId
@@ -592,10 +609,14 @@ const DataImportForm: React.FC = () => {
             databaseType: "MySQL",
             port: 3306,
             scheduleMode: "daily",
+            sampleCount: 20,
+            sampleStrategy: "latest",
+            sampleStorageMode: "replace",
             runImportImmediately: true,
             createClassificationTask: true,
             runClassificationImmediatelyAfterImport: true,
             classificationTaskMode: "new",
+            classificationScheduleMode: "single",
           }}
         >
           <div style={{ display: currentStep === 0 ? "block" : "none" }}>
@@ -766,6 +787,42 @@ const DataImportForm: React.FC = () => {
                       format="YYYY-MM-DD HH:mm"
                       style={{ width: "100%" }}
                     />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Row gutter={20}>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    label="样本抽取数量"
+                    name="sampleCount"
+                    rules={[{ required: true, message: "请输入样本抽取数量" }]}
+                  >
+                    <InputNumber
+                      min={1}
+                      max={200}
+                      style={{ width: "100%" }}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    label="抽取方式"
+                    name="sampleStrategy"
+                    rules={[{ required: true, message: "请选择样本抽取方式" }]}
+                  >
+                    <Select options={SAMPLE_STRATEGY_OPTIONS} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    label="样本存储方式"
+                    name="sampleStorageMode"
+                    rules={[
+                      { required: true, message: "请选择样本存储方式" },
+                    ]}
+                  >
+                    <Select options={SAMPLE_STORAGE_MODE_OPTIONS} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -957,6 +1014,12 @@ const DataImportForm: React.FC = () => {
                             <Descriptions.Item label="分类分级模版">
                               {selectedExistingTask.templateName || "-"}
                             </Descriptions.Item>
+                            <Descriptions.Item label="执行策略">
+                              {CLASSIFICATION_SCHEDULE_MODE_OPTIONS.find(
+                                (item) =>
+                                  item.value === selectedExistingTask.scheduleMode
+                              )?.label || "-"}
+                            </Descriptions.Item>
                             <Descriptions.Item label="任务执行时间">
                               {selectedExistingTask.executeAt || "-"}
                             </Descriptions.Item>
@@ -1034,22 +1097,42 @@ const DataImportForm: React.FC = () => {
                         </Col>
                       </Row>
 
-                      <Form.Item
-                        label="任务执行时间"
-                        name="classificationExecuteAt"
-                        rules={[
-                          {
-                            required: true,
-                            message: "请选择分类分级任务执行时间",
-                          },
-                        ]}
-                      >
-                        <DatePicker
-                          showTime
-                          format="YYYY-MM-DD HH:mm:ss"
-                          style={{ width: "100%" }}
-                        />
-                      </Form.Item>
+                      <Row gutter={20}>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label="执行策略"
+                            name="classificationScheduleMode"
+                            rules={[
+                              {
+                                required: true,
+                                message: "请选择分类分级任务执行策略",
+                              },
+                            ]}
+                          >
+                            <Select
+                              options={CLASSIFICATION_SCHEDULE_MODE_OPTIONS}
+                            />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label="任务执行时间"
+                            name="classificationExecuteAt"
+                            rules={[
+                              {
+                                required: true,
+                                message: "请选择分类分级任务执行时间",
+                              },
+                            ]}
+                          >
+                            <DatePicker
+                              showTime
+                              format="YYYY-MM-DD HH:mm:ss"
+                              style={{ width: "100%" }}
+                            />
+                          </Form.Item>
+                        </Col>
+                      </Row>
                     </Space>
                   )}
                 </Card>

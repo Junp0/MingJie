@@ -16,6 +16,7 @@ import { Card, Col, Row, Space, Statistic, Typography } from 'antd';
 import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
 import { collectDataTypes, countCategoryNodes } from '@/services/data-classification/templateStore';
+import { parseBeijingDateTime } from '@/utils/datetime';
 import { useDashboardData } from '../shared/useDashboardData';
 
 const { Paragraph, Text } = Typography;
@@ -28,6 +29,7 @@ const importSourceLabelMap = {
 } as const;
 
 const taskStatusLabelMap = {
+  waiting_import: '等待导入',
   pending: '待执行',
   running: '执行中',
   completed: '已完成',
@@ -110,7 +112,10 @@ const Analysis: React.FC = () => {
   const assetTrendData = useMemo(
     () =>
       Array.from(
-        aggregateByKey(importTasks, (task) => dayjs(task.createTime).format('MM-DD')).entries(),
+        aggregateByKey(
+          importTasks,
+          (task) => parseBeijingDateTime(task.createTime)?.format('MM-DD') ?? ''
+        ).entries(),
       )
         .map(([date, value]) => ({ date, value }))
         .sort((left, right) => left.date.localeCompare(right.date)),

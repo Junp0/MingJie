@@ -1,12 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { ProtectionFeatureStatus, ProtectionFeatureType } from '@prisma/client';
+import {
+  AuditLogCategory,
+  AuditLogResult,
+  ProtectionFeatureStatus,
+  ProtectionFeatureType,
+} from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProtectionFeatureDto } from './dto/create-protection-feature.dto';
 import { UpdateProtectionFeatureDto } from './dto/update-protection-feature.dto';
 
 @Injectable()
 export class ProtectionFeaturesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   private normalizeType(type?: string): ProtectionFeatureType | undefined {
     if (!type) {
@@ -75,25 +84,66 @@ export class ProtectionFeaturesService {
     });
   }
 
-  create(dto: CreateProtectionFeatureDto) {
-    return this.prisma.protectionFeature.create({
+  async create(dto: CreateProtectionFeatureDto) {
+    const feature = await this.prisma.protectionFeature.create({
       data: {
         ...dto,
         status: dto.status ?? ProtectionFeatureStatus.ACTIVE,
       },
       include: { creator: true },
     });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.PROTECTION_FEATURE,
+      action: '创建保护特征',
+      result: AuditLogResult.SUCCESS,
+      actorId: feature.creatorId,
+      actorName: feature.creator?.name ?? '当前用户',
+      targetType: 'protection-feature',
+      targetId: feature.id,
+      targetName: feature.featureName,
+      detail: `${feature.featureType} 特征已创建`,
+    });
+
+    return feature;
   }
 
-  update(id: string, dto: UpdateProtectionFeatureDto) {
-    return this.prisma.protectionFeature.update({
+  async update(id: string, dto: UpdateProtectionFeatureDto) {
+    const feature = await this.prisma.protectionFeature.update({
       where: { id },
       data: dto,
       include: { creator: true },
     });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.PROTECTION_FEATURE,
+      action: '更新保护特征',
+      result: AuditLogResult.SUCCESS,
+      actorId: feature.creatorId,
+      actorName: feature.creator?.name ?? '当前用户',
+      targetType: 'protection-feature',
+      targetId: feature.id,
+      targetName: feature.featureName,
+      detail: `${feature.featureType} 特征配置已更新`,
+    });
+
+    return feature;
   }
 
-  remove(id: string) {
-    return this.prisma.protectionFeature.delete({ where: { id } });
+  async remove(id: string) {
+    const feature = await this.prisma.protectionFeature.delete({ where: { id } });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.PROTECTION_FEATURE,
+      action: '删除保护特征',
+      result: AuditLogResult.SUCCESS,
+      actorName: '当前用户',
+      targetType: 'protection-feature',
+      targetId: feature.id,
+      targetName: feature.featureName,
+      detail: `${feature.featureType} 特征已删除`,
+    });
+
+    return feature;
   }
 }

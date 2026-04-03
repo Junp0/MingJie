@@ -16,6 +16,16 @@ type FeatureMatcherConfig = {
   hitRate: number;
 };
 
+type ClassificationCandidateConfig = {
+  name: string;
+  rules: Array<{
+    target: string;
+    matcher: string;
+    value: string;
+    hitRate: number;
+  }>;
+};
+
 type PathNode = {
   id: string;
   name: string;
@@ -55,12 +65,9 @@ export interface OverviewFieldRecord {
 
 export interface MissedDataRecord extends Omit<OverviewFieldRecord, 'status'> {
   key: string;
-  missCount: number;
-  missRate: number;
   lastCheckTime: string;
-  status: 'high' | 'medium' | 'low';
-  source: string;
-  priority: 'high' | 'medium' | 'low';
+  closestClassificationRule: string;
+  hitRate: number;
 }
 
 export interface TableFieldRecord {
@@ -102,6 +109,7 @@ export interface DatabaseRecord {
   assetId: string;
   assetName: string;
   name: string;
+  port: number;
   type: string;
   status: 'online' | 'offline';
   tables: TableRecord[];
@@ -109,6 +117,7 @@ export interface DatabaseRecord {
 
 export interface DatabaseInstanceRecord {
   ip: string;
+  port: number;
   status: 'online' | 'offline';
   databases: DatabaseRecord[];
 }
@@ -445,6 +454,97 @@ export class DataOverviewService {
     }
   }
 
+  private matchClassificationRuleValue(
+    value: string,
+    matcher: string,
+    expected: string,
+  ) {
+    const normalizedValue = value.toLowerCase();
+    const normalizedExpected = expected.toLowerCase();
+
+    switch (matcher) {
+      case 'equals':
+        return normalizedValue === normalizedExpected;
+      case 'contains':
+      case 'enumContains':
+        return normalizedExpected
+          .split(',')
+          .map((item) => item.trim())
+          .some((item) => item && normalizedValue.includes(item));
+      case 'prefix':
+        return normalizedValue.startsWith(normalizedExpected);
+      case 'suffix':
+        return normalizedValue.endsWith(normalizedExpected);
+      case 'regex':
+        try {
+          return new RegExp(expected, 'i').test(value);
+        } catch {
+          return false;
+        }
+      default:
+        return false;
+    }
+  }
+
+  private evaluateClosestClassificationCandidate(
+    target: {
+      fieldName: string;
+      fieldComment?: string | null;
+      fieldType: string;
+      tableName: string;
+      tableComment?: string | null;
+    },
+    dataTypes: ClassificationCandidateConfig[],
+  ) {
+    const candidates = dataTypes
+      .map((dataType) => {
+        const hitRate = dataType.rules.reduce((bestScore, rule) => {
+          const currentValue =
+            rule.target === 'fieldComment'
+              ? (target.fieldComment ?? '')
+              : rule.target === 'fieldType'
+                ? target.fieldType
+                : rule.target === 'tableName'
+                  ? target.tableName
+                  : rule.target === 'tableComment'
+                    ? (target.tableComment ?? '')
+                    : target.fieldName;
+
+          return this.matchClassificationRuleValue(
+            currentValue,
+            rule.matcher,
+            rule.value,
+          )
+            ? Math.max(bestScore, Number(rule.hitRate))
+            : bestScore;
+        }, 0);
+
+        return {
+          name: dataType.name,
+          hitRate,
+        };
+      })
+      .sort((left, right) => {
+        if (right.hitRate !== left.hitRate) {
+          return right.hitRate - left.hitRate;
+        }
+        return 0;
+      });
+
+    const bestCandidate = candidates[0];
+    if (!bestCandidate || bestCandidate.hitRate <= 0) {
+      return {
+        closestClassificationRule: '未命中',
+        hitRate: 0,
+      };
+    }
+
+    return {
+      closestClassificationRule: bestCandidate.name,
+      hitRate: bestCandidate.hitRate,
+    };
+  }
+
   private resolveProtectionStatus(
     recommended: boolean,
     sampleData: string[],
@@ -754,12 +854,24 @@ export class DataOverviewService {
   }
 
   async listMissedData() {
-    const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
-      this.getOverviewReferenceData(),
-      this.getActiveProtectionFeatures(),
-      this.getImportedAssets(),
-    ]);
+    const [referenceData, protectionFeatures, importedAssets, overviewContext] =
+      await Promise.all([
+        this.getOverviewReferenceData(),
+        this.getActiveProtectionFeatures(),
+        this.getImportedAssets(),
+        this.getOverviewContext(),
+      ]);
     const { maskingFeatures, encryptionFeatures } = protectionFeatures;
+    const classificationCandidates: ClassificationCandidateConfig[] =
+      (overviewContext.template?.dataTypes ?? []).map((dataType) => ({
+        name: dataType.name,
+        rules: dataType.rules.map((rule) => ({
+          target: rule.target,
+          matcher: rule.matcher,
+          value: rule.value,
+          hitRate: Number(rule.hitRate),
+        })),
+      }));
     const importedMissedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) => {
         const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
@@ -771,9 +883,17 @@ export class DataOverviewService {
 
         return table.columns
           .filter((column) => !column.classificationDataTypeId)
-          .map((column, index) => {
-            const priority = index % 3 === 0 ? 'high' : index % 3 === 1 ? 'medium' : 'low';
-            const missRate = Math.min(95, 25 + index * 6);
+          .map((column) => {
+            const closestCandidate = this.evaluateClosestClassificationCandidate(
+              {
+                fieldName: column.columnName,
+                fieldComment: column.columnComment,
+                fieldType: column.columnType,
+                tableName: table.tableName,
+                tableComment: table.tableComment,
+              },
+              classificationCandidates,
+            );
             const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
             const classificationMeta = this.buildClassificationMeta(
               column.classificationDataType?.categoryId ?? null,
@@ -819,12 +939,10 @@ export class DataOverviewService {
               rootGroupName: assetGroupMeta.rootGroupName,
               assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
               key: `${asset.ipAddress}:${asset.port}:${table.tableName}:${column.columnName}`,
-              missCount: 10 + index * 3,
-              missRate,
               lastCheckTime: this.formatDateTime(column.updatedAt),
-              status: priority,
-              source: '真实导入',
-              priority,
+              closestClassificationRule:
+                closestCandidate.closestClassificationRule,
+              hitRate: closestCandidate.hitRate,
               sampleData,
               updateTime: this.formatDateTime(column.updatedAt),
             } satisfies MissedDataRecord;
@@ -836,13 +954,11 @@ export class DataOverviewService {
       return importedMissedColumns;
     }
 
-    const { scanResults } = await this.getOverviewContext();
+    const { scanResults } = overviewContext;
 
     return scanResults
       .filter((item) => !item.dataAsset && !item.ignoredAt)
-      .map((item, index) => {
-        const priority = index % 3 === 0 ? 'high' : index % 3 === 1 ? 'medium' : 'low';
-        const missRate = Math.min(95, 20 + index * 7);
+      .map((item) => {
         const assetGroupMeta = this.buildAssetGroupMeta(
           item.assetGroupId,
           item.assetGroup?.name ?? '未分组',
@@ -853,6 +969,16 @@ export class DataOverviewService {
           '待治理资产',
           '待治理资产',
           referenceData.classificationCategoryMap,
+        );
+        const closestCandidate = this.evaluateClosestClassificationCandidate(
+          {
+            fieldName: item.databaseName ?? item.sourceName,
+            fieldComment: `${item.sourceName} 未认领资产`,
+            fieldType: item.sourceType.toUpperCase(),
+            tableName: item.databaseName ?? 'auto_scan',
+            tableComment: item.sourceName,
+          },
+          classificationCandidates,
         );
 
         return {
@@ -876,12 +1002,10 @@ export class DataOverviewService {
           rootGroupName: assetGroupMeta.rootGroupName,
           assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
           key: `${item.ipAddress}:${item.port}`,
-          missCount: 10 + index * 5,
-          missRate,
           lastCheckTime: this.formatDateTime(item.updatedAt),
-          status: priority,
-          source: '自动扫描',
-          priority,
+          closestClassificationRule:
+            closestCandidate.closestClassificationRule,
+          hitRate: closestCandidate.hitRate,
           sampleData: [item.ipAddress, item.databaseName ?? item.sourceName],
           updateTime: this.formatDateTime(item.updatedAt),
         } satisfies MissedDataRecord;
@@ -897,17 +1021,19 @@ export class DataOverviewService {
     const { maskingFeatures, encryptionFeatures } = protectionFeatures;
     const importedDatabases = importedAssets.filter((asset) => asset.tables.length > 0);
     if (importedDatabases.length > 0) {
-      const groupedByIp = new Map<string, typeof importedDatabases>();
+      const groupedByInstance = new Map<string, typeof importedDatabases>();
       importedDatabases.forEach((asset) => {
-        const current = groupedByIp.get(asset.ipAddress) ?? [];
+        const instanceKey = `${asset.ipAddress}:${asset.port}`;
+        const current = groupedByInstance.get(instanceKey) ?? [];
         current.push(asset);
-        groupedByIp.set(asset.ipAddress, current);
+        groupedByInstance.set(instanceKey, current);
       });
 
-      return Array.from(groupedByIp.entries()).map(([ip, ipAssets]) => ({
-        ip,
-        status: ipAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
-        databases: ipAssets.map((asset) => {
+      return Array.from(groupedByInstance.values()).map((instanceAssets) => ({
+        ip: instanceAssets[0]?.ipAddress ?? '',
+        port: instanceAssets[0]?.port ?? 0,
+        status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
+        databases: instanceAssets.map((asset) => {
           const assetGroupMeta = this.buildAssetGroupMeta(
             asset.assetGroupId,
             asset.assetGroup?.name,
@@ -919,6 +1045,7 @@ export class DataOverviewService {
             assetId: asset.id,
             assetName: asset.name,
             name: asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name),
+            port: asset.port,
             type: asset.sourceType,
             status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
             tables: asset.tables.map((table) => ({
@@ -1023,17 +1150,19 @@ export class DataOverviewService {
       fieldsByAssetId.set(assetId, current);
     });
 
-    const groupedByIp = new Map<string, typeof assets>();
+    const groupedByInstance = new Map<string, typeof assets>();
     assets.forEach((asset) => {
-      const current = groupedByIp.get(asset.ipAddress) ?? [];
+      const instanceKey = `${asset.ipAddress}:${asset.port}`;
+      const current = groupedByInstance.get(instanceKey) ?? [];
       current.push(asset);
-      groupedByIp.set(asset.ipAddress, current);
+      groupedByInstance.set(instanceKey, current);
     });
 
-    return Array.from(groupedByIp.entries()).map(([ip, ipAssets]) => ({
-      ip,
-      status: ipAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
-      databases: ipAssets.map((asset) => {
+    return Array.from(groupedByInstance.values()).map((instanceAssets) => ({
+      ip: instanceAssets[0]?.ipAddress ?? '',
+      port: instanceAssets[0]?.port ?? 0,
+      status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
+      databases: instanceAssets.map((asset) => {
         const tableName = `${this.normalizeAssetName(asset.name)}_main`;
         const fields = fieldsByAssetId.get(asset.id) ?? [];
 
@@ -1042,6 +1171,7 @@ export class DataOverviewService {
           assetId: asset.id,
           assetName: asset.name,
           name: this.normalizeAssetName(asset.name),
+          port: asset.port,
           type: asset.sourceType,
           status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
           tables: [

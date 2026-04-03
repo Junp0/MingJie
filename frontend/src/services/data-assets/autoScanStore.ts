@@ -1,4 +1,5 @@
 import { request } from '@/services/request';
+import { formatBeijingDateTime, parseBeijingDateTime } from '@/utils/datetime';
 
 export type AutoScanRuleStatus = 'enabled' | 'disabled';
 export type AutoScanResultStatus = 'pending' | 'ignored' | 'claimed';
@@ -68,14 +69,12 @@ type BackendResult = {
   dataAsset?: { id: string; name: string } | null;
 };
 
-const formatDateTime = (value?: string) => (value ? value.replace('T', ' ').replace(/\.\d{3}Z$/, '').replace('Z', '') : '');
-
 const getScheduleLabel = (scheduleMode: AutoScanScheduleMode, firstScanTime: string) => {
-  const date = new Date(firstScanTime.replace(' ', 'T'));
-  const hour = String(date.getHours()).padStart(2, '0');
-  const minute = String(date.getMinutes()).padStart(2, '0');
-  const day = date.getDate();
-  const weekday = ['日', '一', '二', '三', '四', '五', '六'][date.getDay()];
+  const date = parseBeijingDateTime(firstScanTime);
+  const hour = String(date?.hour() ?? 0).padStart(2, '0');
+  const minute = String(date?.minute() ?? 0).padStart(2, '0');
+  const day = date?.date() ?? 1;
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][date?.day() ?? 0];
   switch (scheduleMode) {
     case 'daily':
       return `每天 ${hour}:${minute}`;
@@ -101,7 +100,7 @@ const parseScheduleMode = (cronExpression?: string | null): AutoScanScheduleMode
 };
 
 const mapRule = (item: BackendRule): AutoScanRule => {
-  const firstScanTime = formatDateTime(item.createdAt);
+  const firstScanTime = formatBeijingDateTime(item.createdAt);
   const scheduleMode = parseScheduleMode(item.cronExpression);
   return {
     id: item.id,
@@ -111,7 +110,7 @@ const mapRule = (item: BackendRule): AutoScanRule => {
     firstScanTime,
     scheduleLabel: getScheduleLabel(scheduleMode, firstScanTime || '2026-03-27 02:00:00'),
     status: statusMap(item.status),
-    lastScanTime: formatDateTime(item.updatedAt),
+    lastScanTime: formatBeijingDateTime(item.updatedAt),
     hitCount: item.results?.length ?? 0,
   };
 };
@@ -122,14 +121,14 @@ const mapResult = (item: BackendResult): AutoScanResult => ({
   port: item.port,
   databaseType: item.sourceType,
   matchedRuleId: item.scanRule?.id ?? '',
-  discoveredAt: formatDateTime(item.createdAt),
-  lastSeenAt: formatDateTime(item.updatedAt),
+  discoveredAt: formatBeijingDateTime(item.createdAt),
+  lastSeenAt: formatBeijingDateTime(item.updatedAt),
   status: resultStatusMap(item),
   ignoreReason: item.ignoreReason ?? undefined,
-  ignoredAt: formatDateTime(item.ignoredAt ?? undefined) || undefined,
+  ignoredAt: formatBeijingDateTime(item.ignoredAt ?? undefined) || undefined,
   claimedAssetId: item.dataAsset?.id,
   claimedAssetName: item.dataAsset?.name,
-  claimedAt: item.claimed ? formatDateTime(item.updatedAt) : undefined,
+  claimedAt: item.claimed ? formatBeijingDateTime(item.updatedAt) : undefined,
 });
 
 export const listAutoScanRules = async (): Promise<AutoScanRule[]> => {

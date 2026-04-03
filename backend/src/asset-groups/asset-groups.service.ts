@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { CommonStatus } from '@prisma/client';
+import { AuditLogCategory, AuditLogResult, CommonStatus } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAssetGroupDto } from './dto/create-asset-group.dto';
 import { UpdateAssetGroupDto } from './dto/update-asset-group.dto';
 
 @Injectable()
 export class AssetGroupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   async seed() {
     const count = await this.prisma.assetGroup.count();
@@ -36,8 +40,8 @@ export class AssetGroupsService {
     });
   }
 
-  create(dto: CreateAssetGroupDto) {
-    return this.prisma.assetGroup.create({
+  async create(dto: CreateAssetGroupDto) {
+    const group = await this.prisma.assetGroup.create({
       data: {
         name: dto.name,
         description: dto.description,
@@ -48,16 +52,55 @@ export class AssetGroupsService {
         status: dto.status ?? CommonStatus.ACTIVE,
       },
     });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.ASSET_GROUP,
+      action: '创建资产分组',
+      result: AuditLogResult.SUCCESS,
+      actorName: '当前用户',
+      targetType: 'asset-group',
+      targetId: group.id,
+      targetName: group.name,
+      detail: dto.description ?? '创建新的资产分组',
+    });
+
+    return group;
   }
 
-  update(id: string, dto: UpdateAssetGroupDto) {
-    return this.prisma.assetGroup.update({
+  async update(id: string, dto: UpdateAssetGroupDto) {
+    const group = await this.prisma.assetGroup.update({
       where: { id },
       data: dto,
     });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.ASSET_GROUP,
+      action: '更新资产分组',
+      result: AuditLogResult.SUCCESS,
+      actorName: '当前用户',
+      targetType: 'asset-group',
+      targetId: group.id,
+      targetName: group.name,
+      detail: dto.description ?? '更新资产分组配置',
+    });
+
+    return group;
   }
 
-  remove(id: string) {
-    return this.prisma.assetGroup.delete({ where: { id } });
+  async remove(id: string) {
+    const group = await this.prisma.assetGroup.delete({ where: { id } });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.ASSET_GROUP,
+      action: '删除资产分组',
+      result: AuditLogResult.SUCCESS,
+      actorName: '当前用户',
+      targetType: 'asset-group',
+      targetId: group.id,
+      targetName: group.name,
+      detail: '资产分组已删除',
+    });
+
+    return group;
   }
 }

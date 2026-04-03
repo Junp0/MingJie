@@ -40,6 +40,7 @@ enum ScanTaskStatus {
 }
 
 enum ClassificationTaskStatus {
+  WAITING_IMPORT
   PENDING
   RUNNING
   COMPLETED
@@ -65,6 +66,23 @@ enum ProtectionFeatureType {
 enum ProtectionFeatureStatus {
   ACTIVE
   INACTIVE
+}
+
+enum AuditLogCategory {
+  AUTH
+  ASSET_GROUP
+  IMPORT_TASK
+  CLASSIFICATION_TASK
+  AUTO_SCAN
+  TEMPLATE
+  PROTECTION_FEATURE
+}
+
+enum AuditLogResult {
+  SUCCESS
+  FAILED
+  RUNNING
+  INFO
 }
 
 model User {
@@ -155,6 +173,9 @@ model ImportTask {
   creatorId            String?
   scheduleMode         String           @default("single")
   executeAt            DateTime?
+  sampleCount          Int              @default(20)
+  sampleStrategy       String           @default("latest")
+  sampleStorageMode    String           @default("replace")
   status               ImportTaskStatus @default(PENDING)
   progress             Int              @default(0)
   importedTableCount   Int              @default(0)
@@ -371,6 +392,7 @@ model ClassificationTask {
   dataSource         String
   dataAssetIds       Json?
   dataType           String
+  scheduleMode       String                   @default("single")
   classificationType String
   priority           String
   description        String?
@@ -420,4 +442,23 @@ model AppBootstrapState {
   value     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String           @id @default(cuid())
+  category   AuditLogCategory
+  action     String
+  result     AuditLogResult   @default(INFO)
+  actorId    String?
+  actorName  String?
+  targetType String?
+  targetId   String?
+  targetName String?
+  detail     String?
+  metadata   Json?
+  createdAt  DateTime         @default(now())
+
+  @@index([category])
+  @@index([result])
+  @@index([createdAt])
 }

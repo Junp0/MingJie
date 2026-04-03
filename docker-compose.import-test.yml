@@ -26,5 +26,33 @@ services:
       timeout: 5s
       retries: 10
 
+  import-mysql-3310:
+    image: mysql:8.4
+    container_name: my-ant-design-pro-import-mysql-3310
+    restart: unless-stopped
+    ports:
+      - "3310:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: import_demo_mysql_3310
+      MYSQL_USER: importer
+      MYSQL_PASSWORD: importer123
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - import_mysql_3310_data:/var/lib/mysql
+      - ./scripts/mysql3310-entrypoint-init.sh:/docker-entrypoint-initdb.d/01-mysql3310-entrypoint-init.sh:ro
+      - ./scripts/mysql3310-rich-demo.sql:/docker-entrypoint-initdb.d/10-mysql3310-rich-demo.sql:ro
+      - ./scripts/mysql3310-protection-rich-demo.sql:/docker-entrypoint-initdb.d/11-mysql3310-protection-rich-demo.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -proot_password
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   import_mysql_3308_data:
+  import_mysql_3310_data:

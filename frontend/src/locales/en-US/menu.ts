@@ -21,4 +21,5 @@ export default {
   'menu.data-classification.encryption-features': 'Encryption Features',
   'menu.data-classification.template-detail': 'Template Detail',
   'menu.data-classification.template-add': 'Add Template',
+  'menu.audit-logs': 'Audit Logs',
 };

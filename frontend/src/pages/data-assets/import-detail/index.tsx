@@ -384,7 +384,9 @@ const ImportDetail: React.FC = () => {
                 {linkedClassificationTask.templateName || "-"}
               </Descriptions.Item>
               <Descriptions.Item label="任务状态">
-                {linkedClassificationTask.status === "pending"
+                {linkedClassificationTask.status === "waiting_import"
+                  ? "等待导入"
+                  : linkedClassificationTask.status === "pending"
                   ? "待执行"
                   : linkedClassificationTask.status === "running"
                   ? "执行中"

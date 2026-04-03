@@ -1,11 +1,15 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { CommonStatus, UserRole } from '@prisma/client';
+import { AuditLogCategory, AuditLogResult, CommonStatus, UserRole } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   async seedDefaultUsers() {
     const users = [
@@ -43,6 +47,19 @@ export class AuthService {
         where: { role: UserRole.ADMIN, status: CommonStatus.ACTIVE },
       });
 
+      await this.auditLogsService.record({
+        category: AuditLogCategory.AUTH,
+        action: '登录',
+        result: AuditLogResult.SUCCESS,
+        actorId: user?.id,
+        actorName: user?.name ?? '移动端用户',
+        targetType: 'auth',
+        targetId: user?.id,
+        targetName: payload.username ?? 'mobile',
+        detail: '移动端登录成功',
+        metadata: { loginType: payload.type },
+      });
+
       return {
         status: 'ok',
         type: payload.type,
@@ -55,12 +72,36 @@ export class AuthService {
     });
 
     if (!user || user.passwordHash !== payload.password) {
+      await this.auditLogsService.record({
+        category: AuditLogCategory.AUTH,
+        action: '登录',
+        result: AuditLogResult.FAILED,
+        actorName: payload.username ?? '未知用户',
+        targetType: 'auth',
+        targetName: payload.username ?? 'unknown',
+        detail: '用户名或密码错误',
+        metadata: { loginType: payload.type },
+      });
+
       throw new UnauthorizedException({
         status: 'error',
         type: payload.type,
         currentAuthority: 'guest',
       });
     }
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.AUTH,
+      action: '登录',
+      result: AuditLogResult.SUCCESS,
+      actorId: user.id,
+      actorName: user.name,
+      targetType: 'auth',
+      targetId: user.id,
+      targetName: user.username,
+      detail: '账号密码登录成功',
+      metadata: { loginType: payload.type, role: user.role },
+    });
 
     return {
       status: 'ok',

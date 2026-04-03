@@ -18,6 +18,7 @@ const { Text } = Typography;
 
 interface DatabaseInstance {
   ip: string;
+  port: number;
   status: 'online' | 'offline';
   databases: DatabaseItem[];
 }
@@ -27,6 +28,7 @@ interface DatabaseItem {
   assetId: string;
   assetName: string;
   name: string;
+  port: number;
   type: string;
   status: 'online' | 'offline';
   tables: TableItem[];
@@ -36,6 +38,8 @@ interface TableItem {
   id: string;
   name: string;
   databaseId: string;
+  assetName: string;
+  port: number;
   rowCount: number;
   size: number;
   status: 'online' | 'offline' | 'maintenance';
@@ -71,11 +75,56 @@ interface TableListItem extends TableItem {
 }
 
 interface FieldListItem extends FieldItem {
+  assetName: string;
   databaseName: string;
   tableName: string;
+  port: number;
   instanceIp: string;
   fieldTable: string;
 }
+
+const getDatabaseFieldSummary = (database: DatabaseItem) => {
+  const allFields = database.tables.flatMap((table) => table.fields);
+  const levelCounter = {
+    public: 0,
+    internal: 0,
+    confidential: 0,
+    secret: 0,
+    unknown: 0,
+  };
+
+  allFields.forEach((field) => {
+    if (field.dataLevel === 'public') {
+      levelCounter.public += 1;
+    } else if (field.dataLevel === 'internal') {
+      levelCounter.internal += 1;
+    } else if (field.dataLevel === 'confidential') {
+      levelCounter.confidential += 1;
+    } else if (field.dataLevel === 'secret') {
+      levelCounter.secret += 1;
+    } else {
+      levelCounter.unknown += 1;
+    }
+  });
+
+  return {
+    tableCount: database.tables.length,
+    fieldCount: allFields.length,
+    levelCounter,
+  };
+};
+
+const LEVEL_COUNT_TAGS: Array<{
+  key: keyof ReturnType<typeof getDatabaseFieldSummary>["levelCounter"];
+  label: string;
+  color: string;
+}> = [
+  { key: "public", label: "公开", color: "green" },
+  { key: "internal", label: "内部", color: "blue" },
+  { key: "confidential", label: "敏感", color: "orange" },
+  { key: "secret", label: "核心", color: "red" },
+  { key: "unknown", label: "未分级", color: "default" },
+];
 
 const FIELD_TEMPLATES = [
   { fieldName: 'id', fieldComment: '主键ID', dataType: 'BIGINT', dataCategory: '标识信息' },
@@ -118,11 +167,21 @@ const TableDataList: React.FC = () => {
   }, []);
 
   const databaseMap = useMemo(() => {
-    const entries: Array<[string, { instanceIp: string; database: DatabaseItem }]> = [];
+    const entries: Array<
+      [string, { instanceKey: string; instanceIp: string; instancePort: number; database: DatabaseItem }]
+    > = [];
 
     databaseInstances.forEach((instance) => {
       instance.databases.forEach((database) => {
-        entries.push([database.id, { instanceIp: instance.ip, database }]);
+        entries.push([
+          database.id,
+          {
+            instanceKey: `${instance.ip}:${instance.port}`,
+            instanceIp: instance.ip,
+            instancePort: instance.port,
+            database,
+          },
+        ]);
       });
     });
 
@@ -149,8 +208,8 @@ const TableDataList: React.FC = () => {
     }
 
     if (selectedKey.startsWith('instance:')) {
-      const instanceIp = selectedKey.replace('instance:', '');
-      setSelectedDatabaseInstance(instanceIp);
+      const instanceKey = selectedKey.replace('instance:', '');
+      setSelectedDatabaseInstance(instanceKey);
       setSelectedDatabaseId(null);
       setSelectedTable(null);
       return;
@@ -164,14 +223,16 @@ const TableDataList: React.FC = () => {
         return;
       }
 
-      setSelectedDatabaseInstance(matched.instanceIp);
+      setSelectedDatabaseInstance(matched.instanceKey);
       setSelectedDatabaseId(databaseId);
       setSelectedTable(null);
     }
   };
 
   const getCurrentInstance = () =>
-    databaseInstances.find((instance) => instance.ip === selectedDatabaseInstance) ?? null;
+    databaseInstances.find(
+      (instance) => `${instance.ip}:${instance.port}` === selectedDatabaseInstance
+    ) ?? null;
 
   const getCurrentDatabase = () =>
     getCurrentInstance()?.databases.find((database) => database.id === selectedDatabaseId) ?? null;
@@ -187,6 +248,8 @@ const TableDataList: React.FC = () => {
     if (currentDatabase) {
       return currentDatabase.tables.map((table) => ({
         ...table,
+        assetName: currentDatabase.assetName,
+        port: currentDatabase.port,
         databaseName: currentDatabase.name,
         instanceIp: currentInstance.ip,
       }));
@@ -195,6 +258,8 @@ const TableDataList: React.FC = () => {
     return currentInstance.databases.flatMap((database) =>
       database.tables.map((table) => ({
         ...table,
+        assetName: database.assetName,
+        port: database.port,
         databaseName: database.name,
         instanceIp: currentInstance.ip,
       })),
@@ -205,8 +270,10 @@ const TableDataList: React.FC = () => {
     if (selectedTable) {
       return selectedTable.fields.map((field) => ({
         ...field,
+        assetName: selectedTable.assetName,
         databaseName: selectedTable.databaseName,
         tableName: selectedTable.name,
+        port: selectedTable.port,
         instanceIp: selectedTable.instanceIp,
         fieldTable: selectedTable.name,
       }));
@@ -220,8 +287,10 @@ const TableDataList: React.FC = () => {
       return currentDatabase.tables.flatMap((table) =>
         table.fields.map((field) => ({
           ...field,
+          assetName: currentDatabase.assetName,
           databaseName: currentDatabase.name,
           tableName: table.name,
+          port: currentDatabase.port,
           instanceIp: currentInstance.ip,
           fieldTable: table.name,
         })),
@@ -232,8 +301,10 @@ const TableDataList: React.FC = () => {
       database.tables.flatMap((table) =>
         table.fields.map((field) => ({
           ...field,
+          assetName: database.assetName,
           databaseName: database.name,
           tableName: table.name,
+          port: database.port,
           instanceIp: currentInstance.ip,
           fieldTable: table.name,
         })),
@@ -255,7 +326,7 @@ const TableDataList: React.FC = () => {
       return;
     }
 
-    setSelectedDatabaseInstance(matched.instanceIp);
+    setSelectedDatabaseInstance(matched.instanceKey);
     setSelectedDatabaseId(matched.database.id);
     setSelectedTable(null);
   }, [databaseMap, location.search, messageApi]);
@@ -266,18 +337,18 @@ const TableDataList: React.FC = () => {
       ? [`instance:${selectedDatabaseInstance}`]
       : [];
   const fieldScopeLabel = selectedTable
-    ? `${selectedTable.instanceIp} / ${selectedTable.databaseName} / ${selectedTable.name}`
+    ? `${selectedTable.assetName} (${selectedTable.instanceIp}:${selectedTable.port}) / ${selectedTable.databaseName} / ${selectedTable.name}`
     : currentDatabase
-      ? `${currentInstance?.ip ?? ''} / ${currentDatabase.name}`
+      ? `${currentDatabase.assetName} (${currentInstance?.ip ?? ''}:${currentInstance?.port ?? currentDatabase.port}) / ${currentDatabase.name}`
       : currentInstance
-        ? `${currentInstance.ip} / 全部数据库`
+        ? `数据库实例 ${currentInstance.ip}:${currentInstance.port}`
         : '';
   const fieldScopeKey = selectedTable
-    ? `table:${selectedTable.instanceIp}:${selectedTable.databaseName}:${selectedTable.id}`
+    ? `table:${selectedTable.instanceIp}:${selectedTable.port}:${selectedTable.databaseName}:${selectedTable.id}`
     : currentDatabase
-      ? `database:${currentInstance?.ip ?? ''}:${currentDatabase.id}`
+      ? `database:${currentInstance?.ip ?? ''}:${currentInstance?.port ?? currentDatabase.port}:${currentDatabase.id}`
       : currentInstance
-        ? `instance:${currentInstance.ip}`
+        ? `instance:${currentInstance.ip}:${currentInstance.port}`
         : 'empty';
 
   return (
@@ -294,10 +365,19 @@ const TableDataList: React.FC = () => {
             defaultExpandAll
             onSelect={handleDatabaseTreeSelect}
             treeData={databaseInstances.map((instance) => ({
-              key: `instance:${instance.ip}`,
+              key: `instance:${instance.ip}:${instance.port}`,
               title: (
                 <div>
-                  <div style={{ fontWeight: 'bold' }}>{instance.ip}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 'bold' }}>
+                      {instance.databases.length === 1
+                        ? instance.databases[0]?.assetName ?? `${instance.ip}:${instance.port}`
+                        : `${instance.databases[0]?.assetName ?? '数据资产'} 等${instance.databases.length}个资产`}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#999' }}>
+                      {instance.ip}:{instance.port}
+                    </span>
+                  </div>
                   <Tag color={instance.status === 'online' ? 'green' : 'red'}>
                     {instance.status === 'online' ? '在线' : '离线'}
                   </Tag>
@@ -307,10 +387,34 @@ const TableDataList: React.FC = () => {
                 key: `database:${database.id}`,
                 title: (
                   <div>
-                    <div>{database.name}</div>
-                    <div style={{ fontSize: 12, color: '#666' }}>
-                      {database.tables.length} 个表 / {database.type}
-                    </div>
+                    <div style={{ fontWeight: 'bold' }}>{database.name}</div>
+                    {(() => {
+                      const summary = getDatabaseFieldSummary(database);
+                      return (
+                        <>
+                          <div style={{ fontSize: 12, color: '#666' }}>
+                            {summary.tableCount} 个表 / {summary.fieldCount} 个字段
+                          </div>
+                          <Space
+                            size={[4, 4]}
+                            wrap
+                            style={{ marginTop: 4 }}
+                          >
+                            {LEVEL_COUNT_TAGS.filter(
+                              ({ key }) => summary.levelCounter[key] > 0
+                            ).map(({ key, label, color }) => (
+                              <Tag
+                                key={key}
+                                color={color}
+                                style={{ marginInlineEnd: 0 }}
+                              >
+                                {label} {summary.levelCounter[key]}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </>
+                      );
+                    })()}
                   </div>
                 ),
               })),
@@ -413,7 +517,7 @@ const TableDataList: React.FC = () => {
             <ProTable<FieldListItem>
               actionRef={actionRef}
               rowKey={(record) =>
-                `${record.instanceIp}-${record.databaseName}-${record.tableName}-${record.id}`
+                `${record.instanceIp}-${record.port}-${record.databaseName}-${record.tableName}-${record.id}`
               }
               search={{
                 labelWidth: 120,

@@ -1,4 +1,5 @@
 import { request } from "@/services/request";
+import { formatBeijingDateTime } from "@/utils/datetime";
 
 export type ImportSourceType = "database" | "file" | "api" | "message_queue";
 export type ImportTaskStatus =
@@ -8,6 +9,8 @@ export type ImportTaskStatus =
   | "failed"
   | "stopped";
 export type ImportScheduleMode = "single" | "daily" | "weekly" | "monthly";
+export type ImportSampleStrategy = "latest" | "random";
+export type ImportSampleStorageMode = "replace" | "incremental";
 
 export interface DataAssetImportRecord {
   id: string;
@@ -57,6 +60,9 @@ export interface DataAssetImportFormValues {
   assetGroupName: string;
   scheduleMode: ImportScheduleMode;
   executeAt?: string;
+  sampleCount: number;
+  sampleStrategy: ImportSampleStrategy;
+  sampleStorageMode: ImportSampleStorageMode;
   description?: string;
 }
 
@@ -95,14 +101,6 @@ type BackendImportTask = {
   classificationTask?: { id: string } | null;
   dataAsset?: { id: string } | null;
 };
-
-const formatDateTime = (value?: string) =>
-  value
-    ? value
-        .replace("T", " ")
-        .replace(/\.\d{3}Z$/, "")
-        .replace("Z", "")
-    : "";
 
 const statusMap: Record<BackendImportTask["status"], ImportTaskStatus> = {
   PENDING: "pending",
@@ -148,7 +146,7 @@ const normalizeScheduleMode = (value?: string | null): ImportScheduleMode => {
 
 const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
   const scheduleMode = normalizeScheduleMode(item.scheduleMode);
-  const executeAt = formatDateTime(item.executeAt ?? undefined);
+  const executeAt = formatBeijingDateTime(item.executeAt ?? undefined);
 
   return {
     id: item.id,
@@ -165,18 +163,18 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
     progress: item.progress,
     assetGroupId: item.assetGroupId,
     assetGroupName: item.assetGroup?.name ?? "",
-    createTime: formatDateTime(item.createdAt),
-    updateTime: formatDateTime(item.updatedAt),
+    createTime: formatBeijingDateTime(item.createdAt),
+    updateTime: formatBeijingDateTime(item.updatedAt),
     startTime:
       item.status === "RUNNING" || item.status === "SUCCESS"
-        ? formatDateTime(item.createdAt)
+        ? formatBeijingDateTime(item.createdAt)
         : "",
     endTime:
       item.status === "SUCCESS" || item.status === "FAILED"
-        ? formatDateTime(item.updatedAt)
+        ? formatBeijingDateTime(item.updatedAt)
         : "",
     lastSyncTime:
-      item.status === "SUCCESS" ? formatDateTime(item.updatedAt) : "",
+      item.status === "SUCCESS" ? formatBeijingDateTime(item.updatedAt) : "",
     scheduleMode,
     scheduleLabel: buildScheduleLabel(scheduleMode, executeAt),
     executeAt,
@@ -188,7 +186,8 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
     importedFieldCount: item.importedFieldCount ?? 0,
     importedRecordCount: item.importedRecordCount ?? 0,
     classificationTriggeredAt:
-      formatDateTime(item.classificationTriggeredAt ?? undefined) || undefined,
+      formatBeijingDateTime(item.classificationTriggeredAt ?? undefined) ||
+      undefined,
     errorMessage: item.errorMessage ?? undefined,
     creator: item.creator?.name ?? "当前用户",
   };
@@ -228,8 +227,12 @@ export const createImportTask = async (
       sourceUsername: values.username.trim(),
       sourcePassword: values.password,
       assetGroupId: values.assetGroupId,
+      classificationTaskId: options?.classificationTaskId,
       scheduleMode: values.scheduleMode,
       executeAt: values.executeAt ?? null,
+      sampleCount: values.sampleCount,
+      sampleStrategy: values.sampleStrategy,
+      sampleStorageMode: values.sampleStorageMode,
       description: values.description?.trim() ?? "",
       progress: 0,
       status: "PENDING",

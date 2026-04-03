@@ -1,5 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  AuditLogCategory,
+  AuditLogResult,
+  ClassificationTaskStatus,
   CommonStatus,
   Prisma,
   ClassificationTaskSource,
@@ -8,6 +11,7 @@ import {
   TemplateStatus,
 } from '@prisma/client';
 import mysql from 'mysql2/promise';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { ClassificationTasksService } from '../classification-tasks/classification-tasks.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateImportTaskDto } from './dto/create-import-task.dto';
@@ -38,6 +42,7 @@ type RemoteColumn = {
 export class ImportTasksService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
     private readonly classificationTasksService: ClassificationTasksService,
   ) {}
 
@@ -91,6 +96,47 @@ export class ImportTasksService {
     return parsed;
   }
 
+  private normalizeSampleCount(value?: number | null) {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 20;
+    }
+
+    return Math.min(200, Math.max(1, Math.floor(value)));
+  }
+
+  private normalizeSampleStrategy(value?: string | null) {
+    return value === 'random' ? 'random' : 'latest';
+  }
+
+  private normalizeSampleStorageMode(value?: string | null) {
+    return value === 'incremental' ? 'incremental' : 'replace';
+  }
+
+  private calculateNextExecuteAt(
+    scheduleMode?: string | null,
+    executeAt?: Date | null,
+    referenceTime: Date = new Date(),
+  ) {
+    if (!executeAt || !scheduleMode || scheduleMode === 'single') {
+      return executeAt ?? null;
+    }
+
+    const nextExecuteAt = new Date(executeAt);
+    while (nextExecuteAt <= referenceTime) {
+      if (scheduleMode === 'daily') {
+        nextExecuteAt.setDate(nextExecuteAt.getDate() + 1);
+      } else if (scheduleMode === 'weekly') {
+        nextExecuteAt.setDate(nextExecuteAt.getDate() + 7);
+      } else if (scheduleMode === 'monthly') {
+        nextExecuteAt.setMonth(nextExecuteAt.getMonth() + 1);
+      } else {
+        return executeAt;
+      }
+    }
+
+    return nextExecuteAt;
+  }
+
   private buildImportTaskUpdateData(
     dto: UpdateImportTaskDto,
   ): Prisma.ImportTaskUpdateInput {
@@ -112,6 +158,15 @@ export class ImportTasksService {
       data.scheduleMode = dto.scheduleMode.trim() || 'single';
     if (dto.executeAt !== undefined)
       data.executeAt = this.parseExecuteAt(dto.executeAt);
+    if (dto.sampleCount !== undefined)
+      data.sampleCount = this.normalizeSampleCount(dto.sampleCount);
+    if (dto.sampleStrategy !== undefined)
+      data.sampleStrategy = this.normalizeSampleStrategy(dto.sampleStrategy);
+    if (dto.sampleStorageMode !== undefined) {
+      data.sampleStorageMode = this.normalizeSampleStorageMode(
+        dto.sampleStorageMode,
+      );
+    }
     if (dto.runClassificationImmediatelyAfterImport !== undefined) {
       data.runClassificationImmediatelyAfterImport =
         dto.runClassificationImmediatelyAfterImport;
@@ -294,22 +349,88 @@ export class ImportTasksService {
     databaseName: string,
     tableName: string,
     columnName: string,
+    options?: {
+      sampleCount?: number;
+      sampleStrategy?: string;
+      orderColumnName?: string | null;
+      existingSamples?: string[];
+      sampleStorageMode?: string;
+    },
   ) {
     try {
       const db = this.toSafeIdentifier(databaseName);
       const table = this.toSafeIdentifier(tableName);
       const column = this.toSafeIdentifier(columnName);
-      const [rows] = await connection.query(
-        `SELECT DISTINCT \`${column}\` AS value FROM \`${db}\`.\`${table}\` WHERE \`${column}\` IS NOT NULL LIMIT 3`,
+      const sampleCount = this.normalizeSampleCount(options?.sampleCount);
+      const sampleStrategy = this.normalizeSampleStrategy(
+        options?.sampleStrategy,
       );
+      const sampleStorageMode = this.normalizeSampleStorageMode(
+        options?.sampleStorageMode,
+      );
+      const orderColumnName = options?.orderColumnName
+        ? this.toSafeIdentifier(options.orderColumnName)
+        : null;
 
-      return (rows as Array<{ value: unknown }>)
+      const query =
+        sampleStrategy === 'random'
+          ? `SELECT \`${column}\` AS value FROM \`${db}\`.\`${table}\` WHERE \`${column}\` IS NOT NULL ORDER BY RAND() LIMIT ${sampleCount}`
+          : orderColumnName
+            ? `SELECT \`${column}\` AS value FROM \`${db}\`.\`${table}\` WHERE \`${column}\` IS NOT NULL ORDER BY \`${orderColumnName}\` DESC LIMIT ${sampleCount}`
+            : `SELECT \`${column}\` AS value FROM \`${db}\`.\`${table}\` WHERE \`${column}\` IS NOT NULL LIMIT ${sampleCount}`;
+      const [rows] = await connection.query(query);
+
+      const currentSamples = (rows as Array<{ value: unknown }>)
         .map((row) => row.value)
         .filter((value) => value !== null && value !== undefined)
         .map((value) => String(value));
+      const dedupedCurrentSamples = Array.from(new Set(currentSamples));
+
+      if (sampleStorageMode === 'incremental') {
+        return Array.from(
+          new Set([...(options?.existingSamples ?? []), ...dedupedCurrentSamples]),
+        );
+      }
+
+      return dedupedCurrentSamples;
     } catch {
-      return [];
+      return this.normalizeSampleStorageMode(options?.sampleStorageMode) ===
+        'incremental'
+        ? [...(options?.existingSamples ?? [])]
+        : [];
     }
+  }
+
+  private findPreferredSampleOrderColumn(columns: RemoteColumn[]) {
+    const primaryKey = columns.find((column) => column.COLUMN_KEY === 'PRI');
+    if (primaryKey) {
+      return primaryKey.COLUMN_NAME;
+    }
+
+    const preferredNames = [
+      'updated_at',
+      'update_time',
+      'gmt_modified',
+      'modified_at',
+      'last_modified',
+      'created_at',
+      'create_time',
+      'gmt_create',
+      'id',
+    ];
+
+    const normalizedMap = new Map(
+      columns.map((column) => [column.COLUMN_NAME.toLowerCase(), column.COLUMN_NAME]),
+    );
+
+    for (const candidate of preferredNames) {
+      const matched = normalizedMap.get(candidate);
+      if (matched) {
+        return matched;
+      }
+    }
+
+    return null;
   }
 
   private classifyColumn(
@@ -319,7 +440,7 @@ export class ImportTasksService {
   ) {
     const candidates = dataTypes
       .map((dataType) => {
-        const score = dataType.rules.reduce((total, rule) => {
+        const score = dataType.rules.reduce((bestScore, rule) => {
           const currentValue =
             rule.target === 'fieldComment'
               ? (column.COLUMN_COMMENT ?? '')
@@ -331,9 +452,11 @@ export class ImportTasksService {
                     ? (table.TABLE_COMMENT ?? '')
                     : column.COLUMN_NAME;
 
-          return this.matchRuleValue(currentValue, rule.matcher, rule.value)
-            ? total + Number(rule.hitRate)
-            : total;
+          if (!this.matchRuleValue(currentValue, rule.matcher, rule.value)) {
+            return bestScore;
+          }
+
+          return Math.max(bestScore, Number(rule.hitRate));
         }, 0);
 
         return {
@@ -489,8 +612,6 @@ export class ImportTasksService {
       );
       const columnsResult = columnsRows as RemoteColumn[];
 
-      const dataTypes = await this.loadTemplateDataTypes();
-
       const [assetGroup, creator] = await Promise.all([
         this.prisma.assetGroup.findUnique({ where: { id: dto.assetGroupId } }),
         dto.creatorId
@@ -536,6 +657,35 @@ export class ImportTasksService {
         });
       }
 
+      const existingSampleMap =
+        dto.sampleStorageMode === 'incremental'
+          ? new Map(
+              (
+                await this.prisma.dataAssetColumn.findMany({
+                  where: {
+                    table: {
+                      assetId: asset.id,
+                    },
+                  },
+                  select: {
+                    columnName: true,
+                    sampleData: true,
+                    table: {
+                      select: {
+                        tableName: true,
+                      },
+                    },
+                  },
+                })
+              ).map((column) => [
+                `${column.table.tableName}::${column.columnName}`,
+                Array.isArray(column.sampleData)
+                  ? (column.sampleData as string[])
+                  : [],
+              ]),
+            )
+          : new Map<string, string[]>();
+
       await this.prisma.dataAssetColumn.deleteMany({
         where: {
           table: {
@@ -557,10 +707,11 @@ export class ImportTasksService {
       let fieldCount = 0;
       let recordCount = 0;
       let sizeBytes = 0;
-      let highestLevel: DataLevel | null = null;
 
       for (const table of tablesResult) {
         const tableColumns = columnsByTable.get(table.TABLE_NAME) ?? [];
+        const sampleOrderColumn =
+          this.findPreferredSampleOrderColumn(tableColumns);
         recordCount += Number(table.TABLE_ROWS ?? 0);
         sizeBytes +=
           Number(table.DATA_LENGTH ?? 0) + Number(table.INDEX_LENGTH ?? 0);
@@ -580,16 +731,20 @@ export class ImportTasksService {
 
         for (const column of tableColumns) {
           fieldCount += 1;
-          const classification = this.classifyColumn(column, table, dataTypes);
-          if (this.dataLevelWeight(classification.dataLevel) > this.dataLevelWeight(highestLevel)) {
-            highestLevel = classification.dataLevel;
-          }
-
           const sampleData = await this.loadSampleData(
             connection,
             dto.databaseName ?? '',
             table.TABLE_NAME,
             column.COLUMN_NAME,
+            {
+              sampleCount: dto.sampleCount,
+              sampleStrategy: dto.sampleStrategy,
+              sampleStorageMode: dto.sampleStorageMode,
+              orderColumnName: sampleOrderColumn,
+              existingSamples: existingSampleMap.get(
+                `${table.TABLE_NAME}::${column.COLUMN_NAME}`,
+              ),
+            },
           );
 
           await this.prisma.dataAssetColumn.create({
@@ -603,12 +758,6 @@ export class ImportTasksService {
               isPrimaryKey: column.COLUMN_KEY === 'PRI',
               ordinalPosition: column.ORDINAL_POSITION,
               sampleData,
-              classificationDataTypeId: classification.classificationDataTypeId,
-              dataCategory: classification.dataCategory,
-              dataLevel: classification.dataLevel,
-              isSensitive: classification.isSensitive,
-              needMask: classification.needMask,
-              needEncrypt: classification.needEncrypt,
             },
           });
         }
@@ -621,7 +770,7 @@ export class ImportTasksService {
           fieldCount,
           sizeBytes,
           recordCount,
-          dataLevel: highestLevel ?? asset.dataLevel,
+          dataLevel: asset.dataLevel ?? DataLevel.INTERNAL,
           tags: ['mysql-import', dto.databaseName ?? 'database'],
         },
       });
@@ -643,11 +792,47 @@ export class ImportTasksService {
     }
   }
 
+  private async syncLinkedClassificationTaskDataAsset(taskId: string) {
+    const task = await this.prisma.importTask.findUnique({
+      where: { id: taskId },
+      include: {
+        classificationTask: true,
+      },
+    });
+
+    if (!task?.classificationTaskId || !task.dataAssetId || !task.classificationTask) {
+      return;
+    }
+
+    const nextAssetIds = Array.from(
+      new Set([
+        ...this.normalizeAssetIds(task.classificationTask.dataAssetIds),
+        task.dataAssetId,
+      ]),
+    );
+
+    await this.prisma.classificationTask.update({
+      where: { id: task.classificationTaskId },
+      data: {
+        dataAssetIds: nextAssetIds as Prisma.InputJsonValue,
+        dataSource: await this.resolveClassificationTaskDataSource(
+          nextAssetIds,
+          task.classificationTask.dataSource,
+        ),
+        ...(task.classificationTask.status ===
+        ClassificationTaskStatus.WAITING_IMPORT
+          ? { status: ClassificationTaskStatus.PENDING }
+          : {}),
+      },
+    });
+  }
+
   private async maybeExecuteLinkedClassificationTask(taskId: string) {
     const task = await this.prisma.importTask.findUnique({
       where: { id: taskId },
       select: {
         id: true,
+        sourceName: true,
         status: true,
         classificationTaskId: true,
         runClassificationImmediatelyAfterImport: true,
@@ -673,8 +858,33 @@ export class ImportTasksService {
           classificationTriggeredAt: new Date(),
         },
       });
+      await this.auditLogsService.record({
+        category: AuditLogCategory.IMPORT_TASK,
+        action: '触发关联分类分级任务',
+        result: AuditLogResult.SUCCESS,
+        actorName: '系统',
+        targetType: 'import-task',
+        targetId: task.id,
+        targetName: task.sourceName,
+        detail: `已自动触发关联分类分级任务 ${task.classificationTaskId}`,
+        metadata: { classificationTaskId: task.classificationTaskId },
+      });
     } catch (error) {
       console.error('Failed to auto execute linked classification task', error);
+      await this.auditLogsService.record({
+        category: AuditLogCategory.IMPORT_TASK,
+        action: '触发关联分类分级任务',
+        result: AuditLogResult.FAILED,
+        actorName: '系统',
+        targetType: 'import-task',
+        targetId: task.id,
+        targetName: task.sourceName,
+        detail:
+          error instanceof Error
+            ? error.message
+            : '关联分类分级任务触发失败',
+        metadata: { classificationTaskId: task.classificationTaskId },
+      });
     }
   }
 
@@ -699,6 +909,32 @@ export class ImportTasksService {
         progress: 10,
         errorMessage: null,
         classificationTriggeredAt: null,
+        ...(task.scheduleMode !== 'single' &&
+        task.executeAt &&
+        task.executeAt <= new Date()
+          ? {
+              executeAt: this.calculateNextExecuteAt(
+                task.scheduleMode,
+                task.executeAt,
+              ),
+            }
+          : {}),
+      },
+    });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.IMPORT_TASK,
+      action: '执行导入任务',
+      result: AuditLogResult.RUNNING,
+      actorId: task.creatorId,
+      actorName: task.creator?.name ?? '系统',
+      targetType: 'import-task',
+      targetId: task.id,
+      targetName: task.sourceName,
+      detail: '导入任务开始执行',
+      metadata: {
+        scheduleMode: task.scheduleMode,
+        executeAt: task.executeAt?.toISOString() ?? null,
       },
     });
 
@@ -714,6 +950,9 @@ export class ImportTasksService {
         assetGroupId: task.assetGroupId,
         creatorId: task.creatorId ?? undefined,
         classificationTaskId: task.classificationTaskId ?? undefined,
+        sampleCount: task.sampleCount,
+        sampleStrategy: task.sampleStrategy,
+        sampleStorageMode: task.sampleStorageMode,
         description: task.description ?? undefined,
       });
     } catch (error) {
@@ -728,12 +967,53 @@ export class ImportTasksService {
       });
     }
 
+    const latestTask = await this.prisma.importTask.findUnique({
+      where: { id: task.id },
+      include: this.getInclude(),
+    });
+
+    if (latestTask?.status === ImportTaskStatus.SUCCESS) {
+      await this.auditLogsService.record({
+        category: AuditLogCategory.IMPORT_TASK,
+        action: '执行导入任务',
+        result: AuditLogResult.SUCCESS,
+        actorId: latestTask.creatorId,
+        actorName: latestTask.creator?.name ?? '系统',
+        targetType: 'import-task',
+        targetId: latestTask.id,
+        targetName: latestTask.sourceName,
+        detail: `导入完成，成功导入 ${latestTask.importedTableCount} 张表`,
+        metadata: {
+          importedTableCount: latestTask.importedTableCount,
+          importedFieldCount: latestTask.importedFieldCount,
+          importedRecordCount: latestTask.importedRecordCount,
+        },
+      });
+    } else if (latestTask?.status === ImportTaskStatus.FAILED) {
+      await this.auditLogsService.record({
+        category: AuditLogCategory.IMPORT_TASK,
+        action: '执行导入任务',
+        result: AuditLogResult.FAILED,
+        actorId: latestTask.creatorId,
+        actorName: latestTask.creator?.name ?? '系统',
+        targetType: 'import-task',
+        targetId: latestTask.id,
+        targetName: latestTask.sourceName,
+        detail: latestTask.errorMessage ?? '导入任务执行失败',
+      });
+    }
+
+    await this.syncLinkedClassificationTaskDataAsset(task.id);
     await this.maybeExecuteLinkedClassificationTask(task.id);
 
     return this.prisma.importTask.findUnique({
       where: { id: task.id },
       include: this.getInclude(),
     });
+  }
+
+  async executeNow(id: string) {
+    return this.sanitizeTask(await this.executeImportTask(id));
   }
 
   async create(dto: CreateImportTaskDto) {
@@ -752,6 +1032,11 @@ export class ImportTasksService {
           dto.runClassificationImmediatelyAfterImport ?? false,
         status: dto.status ?? ImportTaskStatus.PENDING,
         progress: dto.progress ?? 0,
+        sampleCount: this.normalizeSampleCount(dto.sampleCount),
+        sampleStrategy: this.normalizeSampleStrategy(dto.sampleStrategy),
+        sampleStorageMode: this.normalizeSampleStorageMode(
+          dto.sampleStorageMode,
+        ),
         description: dto.description,
         assetGroup: {
           connect: { id: dto.assetGroupId },
@@ -768,6 +1053,26 @@ export class ImportTasksService {
           : undefined,
       },
       include: this.getInclude(),
+    });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.IMPORT_TASK,
+      action: '创建导入任务',
+      result: AuditLogResult.SUCCESS,
+      actorId: task.creatorId,
+      actorName: task.creator?.name ?? '当前用户',
+      targetType: 'import-task',
+      targetId: task.id,
+      targetName: task.sourceName,
+      detail:
+        dto.runImmediately === false
+          ? '导入任务已创建，等待按计划执行'
+          : '导入任务已创建',
+      metadata: {
+        scheduleMode: task.scheduleMode,
+        executeAt: task.executeAt?.toISOString() ?? null,
+        runImmediately: dto.runImmediately ?? true,
+      },
     });
 
     if (dto.runImmediately === false || !this.canExecuteImportTask(dto)) {
@@ -808,7 +1113,30 @@ export class ImportTasksService {
       );
     }
 
+    await this.auditLogsService.record({
+      category: AuditLogCategory.IMPORT_TASK,
+      action:
+        dto.classificationTaskId !== undefined
+          ? '关联分类分级任务'
+          : dto.status === ImportTaskStatus.SUCCESS
+            ? '标记导入完成'
+            : dto.status === ImportTaskStatus.FAILED
+              ? '标记导入失败'
+              : '更新导入任务',
+      result: AuditLogResult.SUCCESS,
+      actorId: updatedTask.creatorId,
+      actorName: updatedTask.creator?.name ?? '当前用户',
+      targetType: 'import-task',
+      targetId: updatedTask.id,
+      targetName: updatedTask.sourceName,
+      detail:
+        dto.classificationTaskId !== undefined
+          ? `已关联分类分级任务 ${dto.classificationTaskId ?? ''}`
+          : updatedTask.description ?? '导入任务配置已更新',
+    });
+
     if (updatedTask.status === ImportTaskStatus.SUCCESS) {
+      await this.syncLinkedClassificationTaskDataAsset(id);
       await this.maybeExecuteLinkedClassificationTask(id);
       return this.sanitizeTask(
         await this.prisma.importTask.findUnique({
@@ -877,6 +1205,18 @@ export class ImportTasksService {
 
     await this.prisma.importTask.delete({
       where: { id },
+    });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.IMPORT_TASK,
+      action: '删除导入任务',
+      result: AuditLogResult.SUCCESS,
+      actorId: task.creatorId,
+      actorName: '当前用户',
+      targetType: 'import-task',
+      targetId: task.id,
+      targetName: task.sourceName,
+      detail: '导入任务已删除',
     });
 
     let deletedDataAsset = false;
