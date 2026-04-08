@@ -88,6 +88,12 @@ export const errorConfig: RequestConfig = {
   // 请求拦截器
   requestInterceptors: [
     (config: RequestOptions) => {
+      const token = localStorage.getItem('token');
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      } else if (token) {
+        config.headers = { Authorization: `Bearer ${token}` };
+      }
       return config;
     },
   ],

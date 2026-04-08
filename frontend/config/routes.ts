@@ -124,6 +124,12 @@ export default [
         hideInMenu: true,
       },
       {
+        name: 'data-import-form-edit',
+        path: '/data-assets/data-import-form/:id',
+        component: './data-assets/data-import-form',
+        hideInMenu: true,
+      },
+      {
         name: 'import-detail',
         path: '/data-assets/import-detail/:id',
         component: './data-assets/import-detail',
@@ -188,6 +194,30 @@ export default [
     icon: 'fileSearch',
     name: 'audit-logs',
     component: './audit-logs',
+  },
+  {
+    path: '/system',
+    icon: 'setting',
+    name: 'system',
+    access: 'canAdmin',
+    routes: [
+      {
+        path: '/system',
+        redirect: '/system/user-management',
+      },
+      {
+        name: 'user-management',
+        icon: 'user',
+        path: '/system/user-management',
+        component: './system/user-management',
+      },
+      {
+        name: 'role-management',
+        icon: 'team',
+        path: '/system/role-management',
+        component: './system/role-management',
+      },
+    ],
   },
   {
     path: '/',

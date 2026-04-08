@@ -10,11 +10,12 @@ import {
   Form,
   Input,
   Modal,
+  Progress,
   Row,
   Select,
   Space,
   Statistic,
-  Switch,
+
   Table,
   Tag,
   message,
@@ -26,11 +27,11 @@ import {
   buildAutoScanRuleFormValues,
   cancelIgnoreAutoScanResult,
   createAutoScanRule,
+  deleteAutoScanRule,
   executeAutoScan,
   ignoreAutoScanResult,
   listAutoScanResults,
   listAutoScanRules,
-  toggleAutoScanRuleStatus,
   updateAutoScanRule,
   type AutoScanResult,
   type AutoScanRule,
@@ -86,6 +87,7 @@ const AutoScanDataAssetsPage: React.FC = () => {
   const [results, setResults] = useState<AutoScanResult[]>([]);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutoScanResult['status']>('all');
+  const [ruleFilter, setRuleFilter] = useState<string | null>(null);
   const [ruleModalOpen, setRuleModalOpen] = useState(false);
   const [ignoreModalOpen, setIgnoreModalOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AutoScanRule | null>(null);
@@ -113,24 +115,31 @@ const AutoScanDataAssetsPage: React.FC = () => {
   };
 
   const summary = useMemo(() => {
-    const pendingCount = results.filter((item) => item.status === 'pending').length;
+    const importedCount = results.filter((item) => !!item.importTaskId || item.status === 'claimed').length;
+    const pendingCount = results.filter((item) => item.status === 'pending' && !item.importTaskId).length;
     const ignoredCount = results.filter((item) => item.status === 'ignored').length;
-    const claimedCount = results.filter((item) => item.status === 'claimed').length;
-    const enabledRuleCount = rules.filter((item) => item.status === 'enabled').length;
 
     return {
       totalResults: results.length,
+      importedCount,
       pendingCount,
       ignoredCount,
-      claimedCount,
-      enabledRuleCount,
     };
-  }, [results, rules]);
+  }, [results]);
 
   const filteredResults = useMemo(() => {
     return results.filter((item) => {
-      if (statusFilter !== 'all' && item.status !== statusFilter) {
+      if (ruleFilter && item.matchedRuleId !== ruleFilter) {
         return false;
+      }
+
+      if (statusFilter !== 'all') {
+        const isImported = !!item.importTaskId;
+        if (statusFilter === 'claimed') {
+          if (!isImported && item.status !== 'claimed') return false;
+        } else {
+          if (isImported || item.status !== statusFilter) return false;
+        }
       }
 
       if (!keyword) {
@@ -150,7 +159,7 @@ const AutoScanDataAssetsPage: React.FC = () => {
 
       return searchText.includes(keyword.toLowerCase());
     });
-  }, [keyword, results, statusFilter]);
+  }, [keyword, results, ruleFilter, statusFilter]);
 
   const ruleColumns: TableColumnsType<AutoScanRule> = [
     {
@@ -159,7 +168,12 @@ const AutoScanDataAssetsPage: React.FC = () => {
       width: 220,
       ellipsis: true,
       render: (_, record) => (
-        <span style={{ whiteSpace: 'nowrap' }}>{record.ipRange}</span>
+        <a
+          style={{ whiteSpace: 'nowrap' }}
+          onClick={() => setRuleFilter(ruleFilter === record.id ? null : record.id)}
+        >
+          {record.ipRange}
+        </a>
       ),
     },
     {
@@ -197,51 +211,109 @@ const AutoScanDataAssetsPage: React.FC = () => {
       dataIndex: 'hitCount',
       align: 'center',
       width: 100,
-      render: (_, record) => <Badge count={record.hitCount} color="#1677ff" />,
+      render: (_, record) => (
+        <a onClick={() => setRuleFilter(ruleFilter === record.id ? null : record.id)}>
+          <Badge count={record.hitCount} color="#1677ff" />
+        </a>
+      ),
+    },
+    {
+      title: '扫描进度',
+      dataIndex: 'scanProgress',
+      width: 220,
+      render: (_, record) => {
+        if (record.scanProgress == null) {
+          return <span style={{ color: '#8c8c8c' }}>-</span>;
+        }
+        if (record.scanProgress === -1) {
+          return <Progress percent={0} status="exception" format={() => '失败'} size="small" />;
+        }
+        return (
+          <Space direction="vertical" size={0} style={{ width: '100%' }}>
+            <Progress
+              percent={record.scanProgress}
+              size="small"
+              status={record.scanProgress === 100 ? 'success' : 'active'}
+            />
+            {record.scanStatus ? (
+              <span style={{ color: '#8c8c8c', fontSize: 11 }}>{record.scanStatus}</span>
+            ) : null}
+          </Space>
+        );
+      },
     },
     {
       title: '状态',
       dataIndex: 'status',
-      width: 150,
+      width: 100,
       render: (_, record) => (
-        <Space>
-          <Tag color={RULE_STATUS_META[record.status].color}>{RULE_STATUS_META[record.status].text}</Tag>
-          <Switch
-            size="small"
-            checked={record.status === 'enabled'}
-            onChange={async (checked) => {
-              await toggleAutoScanRuleStatus(record.id, checked ? 'enabled' : 'disabled');
-              await refreshPageData();
-              messageApi.success(`规则已${checked ? '启用' : '停用'}：${formatRuleIdentity(record)}`);
-            }}
-          />
-        </Space>
+        <Tag color={RULE_STATUS_META[record.status].color}>{RULE_STATUS_META[record.status].text}</Tag>
       ),
     },
     {
       title: '操作',
       dataIndex: 'option',
-      width: 100,
+      width: 220,
       render: (_, record) => (
-        <Button
-          type="link"
-          size="small"
-          style={{ padding: 0 }}
-          onClick={() => {
-            setEditingRule(record);
-            ruleForm.setFieldsValue({
-              ipRange: record.ipRange,
-              portRange: record.portRange,
-              scheduleMode: record.scheduleMode,
-              firstScanTime:
-                parseBeijingDateTime(record.firstScanTime) ?? dayjs(),
-              status: record.status,
-            });
-            setRuleModalOpen(true);
-          }}
-        >
-          编辑规则
-        </Button>
+        <Space size={4} wrap={false}>
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0 }}
+            onClick={() => {
+              Modal.confirm({
+                title: '确认执行扫描',
+                content: `即将对规则 ${formatRuleIdentity(record)} 执行扫描，是否继续？`,
+                onOk: async () => {
+                  await executeAutoScan(record.id);
+                  messageApi.success('扫描任务已提交，请稍后刷新查看结果。');
+                  await refreshPageData();
+                },
+              });
+            }}
+          >
+            立即执行扫描
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0 }}
+            onClick={() => {
+              setEditingRule(record);
+              ruleForm.setFieldsValue({
+                ipRange: record.ipRange,
+                portRange: record.portRange,
+                scheduleMode: record.scheduleMode,
+                firstScanTime:
+                  parseBeijingDateTime(record.firstScanTime) ?? dayjs(),
+                status: record.status,
+              });
+              setRuleModalOpen(true);
+            }}
+          >
+            编辑
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            danger
+            style={{ padding: 0 }}
+            onClick={() => {
+              Modal.confirm({
+                title: '确认删除规则',
+                content: `删除后该规则及其所有发现结果将被永久移除。`,
+                okType: 'danger',
+                onOk: async () => {
+                  await deleteAutoScanRule(record.id);
+                  await refreshPageData();
+                  messageApi.success(`规则已删除：${formatRuleIdentity(record)}`);
+                },
+              });
+            }}
+          >
+            删除
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -276,24 +348,44 @@ const AutoScanDataAssetsPage: React.FC = () => {
       dataIndex: 'status',
       search: false,
       width: 220,
-      render: (_, record) => (
-        <Space size={8} wrap={false}>
-          <Badge
-            status={RESULT_STATUS_META[record.status].badgeStatus}
-            text={<Tag color={RESULT_STATUS_META[record.status].color}>{RESULT_STATUS_META[record.status].text}</Tag>}
-          />
-          {record.status === 'ignored' ? (
-            <span style={{ color: '#8c8c8c', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              原因：{record.ignoreReason}
-            </span>
-          ) : null}
-          {record.status === 'claimed' ? (
-            <span style={{ color: '#8c8c8c', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              正式资产：{record.claimedAssetName}
-            </span>
-          ) : null}
-        </Space>
-      ),
+      render: (_, record) => {
+        if (record.importTaskId) {
+          return (
+            <Space size={8} wrap={false}>
+              <Badge
+                status="processing"
+                text={
+                  <Tag
+                    color="blue"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/data-assets/import-detail/${record.importTaskId}`)}
+                  >
+                    已导入
+                  </Tag>
+                }
+              />
+            </Space>
+          );
+        }
+        return (
+          <Space size={8} wrap={false}>
+            <Badge
+              status={RESULT_STATUS_META[record.status].badgeStatus}
+              text={<Tag color={RESULT_STATUS_META[record.status].color}>{RESULT_STATUS_META[record.status].text}</Tag>}
+            />
+            {record.status === 'ignored' ? (
+              <span style={{ color: '#8c8c8c', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                原因：{record.ignoreReason}
+              </span>
+            ) : null}
+            {record.status === 'claimed' ? (
+              <span style={{ color: '#8c8c8c', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                正式资产：{record.claimedAssetName}
+              </span>
+            ) : null}
+          </Space>
+        );
+      },
     },
     {
       title: '首次发现时间',
@@ -322,61 +414,74 @@ const AutoScanDataAssetsPage: React.FC = () => {
       width: 160,
       render: (_, record) => (
         <Space size={4} wrap={false}>
-          {record.status !== 'claimed' && record.status !== 'ignored' ? (
+          {record.importTaskId ? (
             <Button
               type="link"
               size="small"
               style={{ padding: 0 }}
-              onClick={() => navigateToImportForm(record)}
+              onClick={() => navigate(`/data-assets/import-detail/${record.importTaskId}`)}
             >
-              导入
+              查看导入任务
             </Button>
-          ) : null}
-          {record.status !== 'claimed' && record.status !== 'ignored' ? (
-            <Button
-              type="link"
-              size="small"
-              danger
-              style={{ padding: 0 }}
-              onClick={() => {
-                setIgnoreTarget(record);
-                ignoreForm.resetFields();
-                setIgnoreModalOpen(true);
-              }}
-            >
-              忽略
-            </Button>
-          ) : null}
-          {record.status === 'ignored' ? (
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              onClick={() => {
-                Modal.confirm({
-                  title: '确认取消忽略',
-                  content: `取消后 ${formatResultIdentity(record)} 会重新回到待处理队列。`,
-                  onOk: async () => {
-                    await cancelIgnoreAutoScanResult(record.id);
-                    await refreshPageData();
-                    messageApi.success(`已取消忽略：${formatResultIdentity(record)}`);
-                  },
-                });
-              }}
-            >
-              取消忽略
-            </Button>
-          ) : null}
-          {record.status === 'claimed' ? (
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: 0 }}
-              onClick={() => navigate('/data-assets/data-asset-list')}
-            >
-              查看正式资产
-            </Button>
-          ) : null}
+          ) : (
+            <>
+              {record.status !== 'claimed' && record.status !== 'ignored' ? (
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  onClick={() => navigateToImportForm(record)}
+                >
+                  导入
+                </Button>
+              ) : null}
+              {record.status !== 'claimed' && record.status !== 'ignored' ? (
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  style={{ padding: 0 }}
+                  onClick={() => {
+                    setIgnoreTarget(record);
+                    ignoreForm.resetFields();
+                    setIgnoreModalOpen(true);
+                  }}
+                >
+                  忽略
+                </Button>
+              ) : null}
+              {record.status === 'ignored' ? (
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: '确认取消忽略',
+                      content: `取消后 ${formatResultIdentity(record)} 会重新回到待处理队列。`,
+                      onOk: async () => {
+                        await cancelIgnoreAutoScanResult(record.id);
+                        await refreshPageData();
+                        messageApi.success(`已取消忽略：${formatResultIdentity(record)}`);
+                      },
+                    });
+                  }}
+                >
+                  取消忽略
+                </Button>
+              ) : null}
+              {record.status === 'claimed' ? (
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ padding: 0 }}
+                  onClick={() => navigate('/data-assets/data-asset-list')}
+                >
+                  查看正式资产
+                </Button>
+              ) : null}
+            </>
+          )}
         </Space>
       ),
     },
@@ -392,19 +497,6 @@ const AutoScanDataAssetsPage: React.FC = () => {
         >
           查看正式资产
         </Button>,
-        <Button
-          key="execute"
-          type="primary"
-          onClick={async () => {
-            const execution = await executeAutoScan();
-            await refreshPageData();
-            messageApi.success(
-              `本次扫描已执行 ${execution.touchedRuleCount} 条启用规则，新增 ${execution.createdResultCount} 条发现结果。`,
-            );
-          }}
-        >
-          立即执行扫描
-        </Button>,
       ]}
     >
       {contextHolder}
@@ -412,7 +504,12 @@ const AutoScanDataAssetsPage: React.FC = () => {
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card>
-            <Statistic title="本次发现资产" value={summary.totalResults} suffix="条" />
+            <Statistic title="发现资产" value={summary.totalResults} suffix="条" />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} lg={6}>
+          <Card>
+            <Statistic title="已导入" value={summary.importedCount} suffix="条" valueStyle={{ color: '#389e0d' }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
@@ -427,15 +524,6 @@ const AutoScanDataAssetsPage: React.FC = () => {
               value={summary.ignoredCount}
               suffix="条"
               valueStyle={{ color: '#1677ff' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="启用规则 / 已导入"
-              value={`${summary.enabledRuleCount} / ${summary.claimedCount}`}
-              valueStyle={{ color: '#389e0d' }}
             />
           </Card>
         </Col>
@@ -474,7 +562,20 @@ const AutoScanDataAssetsPage: React.FC = () => {
 
       <ProTable<AutoScanResult>
         rowKey="id"
-        headerTitle="发现结果"
+        headerTitle={
+          ruleFilter ? (
+            <Space>
+              <span>发现结果</span>
+              <Tag
+                closable
+                color="blue"
+                onClose={() => setRuleFilter(null)}
+              >
+                {rules.find((r) => r.id === ruleFilter)?.ipRange ?? '规则筛选'}
+              </Tag>
+            </Space>
+          ) : '发现结果'
+        }
         search={false}
         options={false}
         size="small"

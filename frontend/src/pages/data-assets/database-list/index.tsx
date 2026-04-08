@@ -22,6 +22,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Row,
   Select,
   Space,
@@ -44,6 +45,7 @@ import {
 } from '@/services/data-assets/assetGroupStore';
 import {
   DATA_ASSET_SOURCE_TYPE_OPTIONS,
+  deleteDataAsset,
   listDataAssets,
   syncDataAssetGroupName,
   updateDataAsset,
@@ -944,6 +946,31 @@ const DataAssetList: React.FC = () => {
             >
               编辑
             </Button>
+            <Popconfirm
+              title="确认删除该数据资产？"
+              description="删除后将同时删除关联的表和字段数据，并取消关联的分类分级任务。"
+              onConfirm={async () => {
+                try {
+                  await deleteDataAsset(record.id);
+                  messageApi.success(`已删除数据资产: ${record.name}`);
+                  handleRefresh();
+                } catch (e: any) {
+                  messageApi.error(e?.message || '删除失败');
+                }
+              }}
+              okText="确认删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="link"
+                size="small"
+                danger
+                style={{ padding: 0, margin: 0 }}
+              >
+                删除
+              </Button>
+            </Popconfirm>
           </div>
         ),
       },

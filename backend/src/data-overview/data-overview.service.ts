@@ -688,7 +688,7 @@ export class DataOverviewService {
     const templateDataTypes = template?.dataTypes ?? [];
 
     return assets.flatMap((asset) => {
-      const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
+      const databaseName = this.normalizeAssetName(asset.name);
       const tableName = `${this.normalizeAssetName(asset.name)}_main`;
       const assetGroupMeta = this.buildAssetGroupMeta(
         asset.assetGroupId,
@@ -791,7 +791,7 @@ export class DataOverviewService {
     const { maskingFeatures, encryptionFeatures } = protectionFeatures;
     const importedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) => {
-        const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
+        const databaseName = this.normalizeAssetName(asset.name);
         const assetGroupMeta = this.buildAssetGroupMeta(
           asset.assetGroupId,
           asset.assetGroup?.name,
@@ -888,7 +888,7 @@ export class DataOverviewService {
       }));
     const importedMissedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) => {
-        const databaseName = asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name);
+        const databaseName = this.normalizeAssetName(asset.name);
         const assetGroupMeta = this.buildAssetGroupMeta(
           asset.assetGroupId,
           asset.assetGroup?.name,
@@ -1059,26 +1059,35 @@ export class DataOverviewService {
         ip: instanceAssets[0]?.ipAddress ?? '',
         port: instanceAssets[0]?.port ?? 0,
             status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
-            databases: instanceAssets.map((asset) => {
+            databases: instanceAssets.flatMap((asset) => {
           const assetGroupMeta = this.buildAssetGroupMeta(
             asset.assetGroupId,
             asset.assetGroup?.name,
             referenceData.assetGroupMap,
           );
 
-          return {
-            id: asset.id,
+          // Group tables by their actual databaseName
+          const tablesByDbName = new Map<string, typeof asset.tables>();
+          asset.tables.forEach((table) => {
+            const dbName = table.databaseName || this.normalizeAssetName(asset.name);
+            const current = tablesByDbName.get(dbName) ?? [];
+            current.push(table);
+            tablesByDbName.set(dbName, current);
+          });
+
+          return Array.from(tablesByDbName.entries()).map(([dbName, dbTables]) => ({
+            id: `${asset.id}::${dbName}`,
             assetId: asset.id,
             assetName: asset.name,
-            name: asset.sourceDatabaseName ?? this.normalizeAssetName(asset.name),
+            name: dbName,
             port: asset.port,
             type: asset.sourceType,
             status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
             isDeleted: asset.isDeleted,
-            tables: asset.tables.map((table) => ({
+            tables: dbTables.map((table) => ({
               id: table.id,
               name: table.tableName,
-              databaseId: asset.id,
+              databaseId: `${asset.id}::${dbName}`,
               rowCount: table.rowCount,
               size: table.sizeBytes,
               status:
@@ -1145,7 +1154,7 @@ export class DataOverviewService {
                 };
               }),
             })),
-          } satisfies DatabaseRecord;
+          } satisfies DatabaseRecord));
         }),
       } satisfies DatabaseInstanceRecord));
     }

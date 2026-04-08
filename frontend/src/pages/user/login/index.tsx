@@ -136,6 +136,9 @@ const Login: React.FC = () => {
       const { autoLogin: _autoLogin, ...loginValues } = values;
       const msg = await login({ ...loginValues, type });
       if (msg.status === 'ok') {
+        if (msg.token) {
+          localStorage.setItem('token', msg.token);
+        }
         const defaultLoginSuccessMessage = intl.formatMessage({
           id: 'pages.login.success',
           defaultMessage: '登录成功！',

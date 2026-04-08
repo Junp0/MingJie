@@ -1,6 +1,8 @@
-import { listAssetGroupSelectOptions } from "@/services/data-assets/assetGroupStore";
+import { listAssetGroupTreeSelectOptions } from "@/services/data-assets/assetGroupStore";
 import {
   createImportTask,
+  getImportTaskById,
+  updateImportTask,
   discoverImportDatabases,
   type DataAssetImportFormValues,
   type DiscoverImportDatabasesValues,
@@ -25,7 +27,7 @@ import {
   SyncOutlined,
 } from "@ant-design/icons";
 import { PageContainer } from "@ant-design/pro-components";
-import { useLocation, useNavigate } from "@umijs/max";
+import { useLocation, useNavigate, useParams } from "@umijs/max";
 import {
   Alert,
   Button,
@@ -41,9 +43,11 @@ import {
   Row,
   Select,
   Space,
+  Spin,
   Steps,
   Switch,
   Tag,
+  TreeSelect,
   Typography,
   message,
 } from "antd";
@@ -110,6 +114,7 @@ const SCHEDULE_MODE_OPTIONS: Array<{
   value: ImportScheduleMode;
   label: string;
 }> = [
+  { value: "immediate", label: "任务创建后立即导入" },
   { value: "single", label: "单次同步" },
   { value: "daily", label: "每日" },
   { value: "weekly", label: "每周" },
@@ -155,9 +160,6 @@ const CLASSIFICATION_SCHEDULE_MODE_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "single", label: "单次执行" },
-  { value: "daily", label: "每日" },
-  { value: "weekly", label: "每周" },
-  { value: "monthly", label: "每月" },
 ];
 
 const mapTaskDataTypeToLabel = (value?: ClassificationTaskDataType) => {
@@ -170,10 +172,13 @@ const mapTaskDataTypeToLabel = (value?: ClassificationTaskDataType) => {
 const DataImportForm: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { id: editId } = useParams<{ id?: string }>();
+  const isEditMode = Boolean(editId);
   const [form] = Form.useForm<ImportWorkflowFormValues>();
   const [messageApi, contextHolder] = message.useMessage();
   const [currentStep, setCurrentStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [discoveringDatabases, setDiscoveringDatabases] = useState(false);
   const [databaseOptions, setDatabaseOptions] = useState<string[]>([]);
   const [templateOptions, setTemplateOptions] = useState<
@@ -183,7 +188,7 @@ const DataImportForm: React.FC = () => {
     ClassificationTaskRecord[]
   >([]);
   const [assetGroupOptions, setAssetGroupOptions] = useState<
-    Array<{ value: string; label: string }>
+    Array<{ value: string; title: string; children: any[] }>
   >([]);
 
   const sourceType = Form.useWatch("sourceType", form) ?? "database";
@@ -193,7 +198,7 @@ const DataImportForm: React.FC = () => {
     form
   );
   const classificationTaskMode =
-    Form.useWatch("classificationTaskMode", form) ?? "new";
+    Form.useWatch("classificationTaskMode", form) ?? "existing";
   const existingClassificationTaskId = Form.useWatch(
     "existingClassificationTaskId",
     form
@@ -262,7 +267,7 @@ const DataImportForm: React.FC = () => {
       try {
         const [templates, groups, tasks] = await Promise.all([
           listClassificationTemplates(),
-          listAssetGroupSelectOptions(),
+          listAssetGroupTreeSelectOptions(),
           listClassificationTasks(),
         ]);
 
@@ -298,6 +303,24 @@ const DataImportForm: React.FC = () => {
       });
     }
   }, [defaultTemplateOption, form]);
+
+  // Auto-select the classification task linked to the default template
+  useEffect(() => {
+    if (
+      classificationTasks.length > 0 &&
+      defaultTemplateOption &&
+      !form.getFieldValue("existingClassificationTaskId")
+    ) {
+      const defaultTask = classificationTasks.find(
+        (t) => t.templateId === defaultTemplateOption.value,
+      );
+      if (defaultTask) {
+        form.setFieldsValue({
+          existingClassificationTaskId: defaultTask.id,
+        });
+      }
+    }
+  }, [classificationTasks, defaultTemplateOption, form]);
 
   useEffect(() => {
     if (
@@ -357,6 +380,58 @@ const DataImportForm: React.FC = () => {
     });
   }, [discoveryPreset, form]);
 
+  useEffect(() => {
+    if (!editId) return;
+    let cancelled = false;
+
+    const loadTask = async () => {
+      setLoading(true);
+      try {
+        const task = await getImportTaskById(editId);
+        if (cancelled || !task) return;
+
+        const dbNames = task.databaseName
+          ? task.databaseName.split("、").filter(Boolean)
+          : [];
+        setDatabaseOptions(dbNames);
+
+        const connectorType =
+          CONNECTOR_TYPE_OPTIONS.database.find(
+            (opt) =>
+              opt.value.toLowerCase() === task.databaseType.toLowerCase()
+          )?.value ?? task.databaseType;
+
+        form.setFieldsValue({
+          sourceName: task.sourceName,
+          sourceType: task.sourceType,
+          databaseType: connectorType,
+          ipAddress: task.ipAddress,
+          port: task.port,
+          username: task.username,
+          databaseName: dbNames,
+          assetGroupId: task.assetGroupId,
+          scheduleMode: task.scheduleMode,
+          executeAt: task.executeAt ? dayjs(task.executeAt) : undefined,
+          sampleCount: 20,
+          sampleStrategy: "random",
+          sampleStorageMode: "incremental",
+          description: task.description,
+        });
+      } catch (error) {
+        console.error("Failed to load import task for editing", error);
+        messageApi.error("加载导入任务失败");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadTask();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, form, messageApi]);
+
   const handleSourceTypeChange = (value: ImportSourceType) => {
     const firstConnector = CONNECTOR_TYPE_OPTIONS[value][0];
     setDatabaseOptions([]);
@@ -406,10 +481,8 @@ const DataImportForm: React.FC = () => {
 
       setDatabaseOptions(databases);
 
-      if (databases.length === 1) {
-        form.setFieldsValue({ databaseName: databases[0] });
-      } else if (databases.length > 1 && !form.getFieldValue("databaseName")) {
-        form.setFieldsValue({ databaseName: databases[0] });
+      if (databases.length > 0) {
+        form.setFieldsValue({ databaseName: databases });
       }
 
       messageApi.success(
@@ -427,7 +500,8 @@ const DataImportForm: React.FC = () => {
   };
 
   const validateStepOne = async () => {
-    await form.validateFields([
+    const currentScheduleMode = form.getFieldValue("scheduleMode");
+    const fields = [
       "sourceName",
       "sourceType",
       "databaseType",
@@ -438,11 +512,12 @@ const DataImportForm: React.FC = () => {
       "databaseName",
       "assetGroupId",
       "scheduleMode",
-      "executeAt",
+      ...(currentScheduleMode !== "immediate" ? ["executeAt"] : []),
       "sampleCount",
       "sampleStrategy",
       "sampleStorageMode",
-    ]);
+    ];
+    await form.validateFields(fields);
   };
 
   const validateStepTwo = async () => {
@@ -451,7 +526,7 @@ const DataImportForm: React.FC = () => {
     }
 
     if (
-      (form.getFieldValue("classificationTaskMode") ?? "new") === "existing"
+      (form.getFieldValue("classificationTaskMode") ?? "existing") === "existing"
     ) {
       await form.validateFields(["existingClassificationTaskId"]);
       return;
@@ -460,8 +535,6 @@ const DataImportForm: React.FC = () => {
     await form.validateFields([
       "classificationTaskName",
       "classificationTemplateId",
-      "classificationScheduleMode",
-      "classificationExecuteAt",
     ]);
   };
 
@@ -482,10 +555,54 @@ const DataImportForm: React.FC = () => {
 
       setSubmitting(true);
 
+      if (isEditMode && editId) {
+        const databaseName = Array.isArray(values.databaseName)
+          ? values.databaseName
+          : [values.databaseName];
+
+        const findTreeNodeTitle = (
+          nodes: Array<{ value: string; title: string; children: any[] }>,
+          targetValue: string,
+        ): string | undefined => {
+          for (const node of nodes) {
+            if (node.value === targetValue) return node.title;
+            const found = findTreeNodeTitle(node.children ?? [], targetValue);
+            if (found) return found;
+          }
+          return undefined;
+        };
+
+        const assetGroupName =
+          findTreeNodeTitle(assetGroupOptions, values.assetGroupId) ?? "未分组";
+
+        await updateImportTask(editId, {
+          sourceName: values.sourceName,
+          sourceType: values.sourceType,
+          databaseType: values.databaseType,
+          databaseName,
+          ipAddress: values.ipAddress,
+          port: values.port,
+          username: values.username,
+          password: values.password,
+          assetGroupId: values.assetGroupId,
+          assetGroupName,
+          scheduleMode: values.scheduleMode,
+          executeAt: values.executeAt?.format("YYYY-MM-DD HH:mm:ss"),
+          sampleCount: values.sampleCount,
+          sampleStrategy: values.sampleStrategy,
+          sampleStorageMode: values.sampleStorageMode,
+          description: values.description ?? "",
+        });
+
+        messageApi.success("导入任务已更新");
+        navigate(`/data-assets/import-detail/${editId}`);
+        return;
+      }
+
       let linkedClassificationTaskId: string | undefined;
 
       if (values.createClassificationTask) {
-        if ((values.classificationTaskMode ?? "new") === "existing") {
+        if ((values.classificationTaskMode ?? "existing") === "existing") {
           const existingTask = classificationTasks.find(
             (task) => task.id === values.existingClassificationTaskId
           );
@@ -511,10 +628,8 @@ const DataImportForm: React.FC = () => {
               classificationType: "automatic",
               templateId: values.classificationTemplateId,
               templateName: selectedTemplate?.label,
-              scheduleMode: values.classificationScheduleMode ?? "single",
-              executeAt: values.classificationExecuteAt?.format(
-                "YYYY-MM-DD HH:mm:ss"
-              ),
+              scheduleMode: "single",
+              executeAt: undefined,
             },
             {
               taskSource: "asset-import",
@@ -527,20 +642,37 @@ const DataImportForm: React.FC = () => {
         }
       }
 
+      const databaseName = Array.isArray(values.databaseName)
+        ? values.databaseName
+        : [values.databaseName];
+
+      const findTreeNodeTitle = (
+        nodes: Array<{ value: string; title: string; children: any[] }>,
+        targetValue: string,
+      ): string | undefined => {
+        for (const node of nodes) {
+          if (node.value === targetValue) return node.title;
+          const found = findTreeNodeTitle(node.children ?? [], targetValue);
+          if (found) return found;
+        }
+        return undefined;
+      };
+
+      const assetGroupName =
+        findTreeNodeTitle(assetGroupOptions, values.assetGroupId) ?? "未分组";
+
       const importTask = await createImportTask(
         {
           sourceName: values.sourceName,
           sourceType: values.sourceType,
           databaseType: values.databaseType,
-          databaseName: values.databaseName,
+          databaseName,
           ipAddress: values.ipAddress,
           port: values.port,
           username: values.username,
           password: values.password,
           assetGroupId: values.assetGroupId,
-          assetGroupName:
-            assetGroupOptions.find((item) => item.value === values.assetGroupId)
-              ?.label ?? "未分组",
+          assetGroupName,
           scheduleMode: values.scheduleMode,
           executeAt: values.executeAt?.format("YYYY-MM-DD HH:mm:ss"),
           sampleCount: values.sampleCount,
@@ -551,10 +683,12 @@ const DataImportForm: React.FC = () => {
         {
           creator: "当前用户",
           classificationTaskId: linkedClassificationTaskId,
-          runImmediately: values.runImportImmediately,
+          runImmediately:
+            values.scheduleMode === "immediate"
+              ? true
+              : values.runImportImmediately,
           runClassificationImmediatelyAfterImport:
-            values.createClassificationTask &&
-            values.runClassificationImmediatelyAfterImport,
+            values.createClassificationTask,
         }
       );
 
@@ -565,6 +699,7 @@ const DataImportForm: React.FC = () => {
             : "导入任务和分类分级任务已创建"
           : "导入任务已创建"
       );
+
       navigate(`/data-assets/import-detail/${importTask.id}`);
     } catch (error) {
       console.error(error);
@@ -591,11 +726,12 @@ const DataImportForm: React.FC = () => {
 
   return (
     <PageContainer
-      title="新增数据资产导入任务"
-      onBack={() => navigate(backPath)}
+      title={isEditMode ? "编辑数据资产导入任务" : "新增数据资产导入任务"}
+      onBack={() => navigate(isEditMode && editId ? `/data-assets/import-detail/${editId}` : backPath)}
     >
       {contextHolder}
 
+      <Spin spinning={loading}>
       <div style={{ maxWidth: 1040, margin: "0 auto" }}>
         <Card style={{ marginBottom: 24 }}>
           <Steps current={currentStep} items={steps} />
@@ -608,14 +744,14 @@ const DataImportForm: React.FC = () => {
             sourceType: "database",
             databaseType: "MySQL",
             port: 3306,
-            scheduleMode: "daily",
+            scheduleMode: "immediate",
             sampleCount: 20,
-            sampleStrategy: "latest",
-            sampleStorageMode: "replace",
-            runImportImmediately: true,
+            sampleStrategy: "random",
+            sampleStorageMode: "incremental",
+            runImportImmediately: false,
             createClassificationTask: true,
-            runClassificationImmediatelyAfterImport: true,
-            classificationTaskMode: "new",
+            runClassificationImmediatelyAfterImport: false,
+            classificationTaskMode: "existing",
             classificationScheduleMode: "single",
           }}
         >
@@ -738,9 +874,10 @@ const DataImportForm: React.FC = () => {
                 label="数据库名 / Schema"
                 name="databaseName"
                 rules={[{ required: true, message: "请选择数据库名" }]}
-                extra="数据库名称会从真实连接中自动发现；如果已知可直接选择。"
+                extra="数据库名称会从真实连接中自动发现，支持同时选择多个数据库。"
               >
                 <Select
+                  mode="multiple"
                   showSearch
                   placeholder="请先测试连接并获取数据库列表"
                   options={databaseOptions.map((item) => ({
@@ -756,39 +893,51 @@ const DataImportForm: React.FC = () => {
                 name="assetGroupId"
                 rules={[{ required: true, message: "请选择资产分组" }]}
               >
-                <Select
+                <TreeSelect
                   showSearch
+                  treeDefaultExpandAll
                   placeholder="请选择资产分组"
-                  options={assetGroupOptions}
-                  optionFilterProp="label"
+                  treeData={assetGroupOptions}
+                  treeNodeFilterProp="title"
                 />
               </Form.Item>
 
               <Row gutter={20}>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={scheduleMode === "immediate" ? 24 : 8}>
                   <Form.Item
                     label="同步策略"
                     name="scheduleMode"
                     rules={[{ required: true, message: "请选择同步策略" }]}
                   >
-                    <Select options={SCHEDULE_MODE_OPTIONS} />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={16}>
-                  <Form.Item
-                    label={
-                      scheduleMode === "single" ? "执行时间" : "首次执行时间"
-                    }
-                    name="executeAt"
-                    rules={[{ required: true, message: "请选择执行时间" }]}
-                  >
-                    <DatePicker
-                      showTime
-                      format="YYYY-MM-DD HH:mm"
-                      style={{ width: "100%" }}
+                    <Select
+                      options={SCHEDULE_MODE_OPTIONS}
+                      onChange={(value: ImportScheduleMode) => {
+                        if (value !== "immediate" && !form.getFieldValue("executeAt")) {
+                          form.setFieldsValue({
+                            executeAt: dayjs().hour(23).minute(0).second(0),
+                          });
+                        }
+                      }}
                     />
                   </Form.Item>
                 </Col>
+                {scheduleMode !== "immediate" && (
+                  <Col xs={24} md={16}>
+                    <Form.Item
+                      label={
+                        scheduleMode === "single" ? "执行时间" : "首次执行时间"
+                      }
+                      name="executeAt"
+                      rules={[{ required: true, message: "请选择执行时间" }]}
+                    >
+                      <DatePicker
+                        showTime
+                        format="YYYY-MM-DD HH:mm"
+                        style={{ width: "100%" }}
+                      />
+                    </Form.Item>
+                  </Col>
+                )}
               </Row>
 
               <Row gutter={20}>
@@ -836,18 +985,22 @@ const DataImportForm: React.FC = () => {
                 />
               </Form.Item>
 
-              <Form.Item
-                name="runImportImmediately"
-                valuePropName="checked"
-                style={{ marginBottom: 0 }}
-              >
-                <Checkbox>
-                  任务创建成功后立即执行一次导入任务
-                </Checkbox>
-              </Form.Item>
-              <Text type="secondary">
-                取消勾选后，本次仅保存导入任务与执行时间配置，不会在提交后立刻启动导入。
-              </Text>
+              {scheduleMode !== "immediate" && (
+                <>
+                  <Form.Item
+                    name="runImportImmediately"
+                    valuePropName="checked"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Checkbox>
+                      任务创建成功后立即执行一次导入任务
+                    </Checkbox>
+                  </Form.Item>
+                  <Text type="secondary">
+                    取消勾选后，本次仅保存导入任务与执行时间配置，不会在提交后立刻启动导入。
+                  </Text>
+                </>
+              )}
             </Card>
           </div>
 
@@ -894,7 +1047,13 @@ const DataImportForm: React.FC = () => {
                   </Col>
                   <Col xs={24} md={8}>
                     <Text type="secondary">数据库名：</Text>
-                    <Text>{form.getFieldValue("databaseName") || "-"}</Text>
+                    <Text>
+                      {(() => {
+                        const v = form.getFieldValue("databaseName");
+                        if (Array.isArray(v)) return v.join("、") || "-";
+                        return v || "-";
+                      })()}
+                    </Text>
                   </Col>
                   <Col xs={24} md={8}>
                     <Text type="secondary">接入类型：</Text>
@@ -903,24 +1062,33 @@ const DataImportForm: React.FC = () => {
                   <Col span={24}>
                     <Text type="secondary">资产分组：</Text>
                     <Text>
-                      {assetGroupOptions.find(
-                        (item) =>
-                          item.value === form.getFieldValue("assetGroupId")
-                      )?.label || "-"}
+                      {(() => {
+                        const groupId = form.getFieldValue("assetGroupId");
+                        const findTitle = (nodes: any[]): string | undefined => {
+                          for (const n of nodes) {
+                            if (n.value === groupId) return n.title;
+                            const found = findTitle(n.children ?? []);
+                            if (found) return found;
+                          }
+                          return undefined;
+                        };
+                        return findTitle(assetGroupOptions) || "-";
+                      })()}
                     </Text>
                   </Col>
                   <Col span={24}>
-                    <Text type="secondary">
-                      {scheduleMode === "single"
-                        ? "执行时间："
-                        : "首次执行时间："}
-                    </Text>
+                    <Text type="secondary">同步策略：</Text>
                     <Text>
-                      {form.getFieldValue("executeAt")
-                        ? dayjs(form.getFieldValue("executeAt")).format(
-                            "YYYY-MM-DD HH:mm"
-                          )
-                        : "-"}
+                      {scheduleMode === "immediate"
+                        ? "任务创建后立即导入"
+                        : (() => {
+                            const label = scheduleMode === "single" ? "执行时间" : "首次执行时间";
+                            const timeVal = form.getFieldValue("executeAt");
+                            const timeStr = timeVal
+                              ? dayjs(timeVal).format("YYYY-MM-DD HH:mm")
+                              : "-";
+                            return `${SCHEDULE_MODE_OPTIONS.find((o) => o.value === scheduleMode)?.label ?? "-"} / ${label}：${timeStr}`;
+                          })()}
                     </Text>
                   </Col>
                 </Row>
@@ -928,23 +1096,17 @@ const DataImportForm: React.FC = () => {
 
               {createClassificationTaskSwitch ? (
                 <Card title="分类分级任务参数">
-                  <Form.Item
-                    name="runClassificationImmediatelyAfterImport"
-                    valuePropName="checked"
+                  <Alert
+                    type="info"
+                    showIcon
                     style={{ marginBottom: 20 }}
-                  >
-                    <Checkbox>
-                      数据资产导入成功后立即执行一次数据分类分级任务
-                    </Checkbox>
-                  </Form.Item>
-                  <Text type="secondary">
-                    取消勾选后，仅保留分类分级任务的执行时间配置，不会在本次导入完成后立即触发。
-                  </Text>
+                    message="分类分级任务将在数据导入完成后自动执行"
+                  />
 
                   <Form.Item
                     label="关联方式"
                     name="classificationTaskMode"
-                    style={{ marginBottom: 20, marginTop: 20 }}
+                    style={{ marginBottom: 20 }}
                   >
                     <Radio.Group
                       optionType="button"
@@ -1099,37 +1261,8 @@ const DataImportForm: React.FC = () => {
 
                       <Row gutter={20}>
                         <Col xs={24} md={12}>
-                          <Form.Item
-                            label="执行策略"
-                            name="classificationScheduleMode"
-                            rules={[
-                              {
-                                required: true,
-                                message: "请选择分类分级任务执行策略",
-                              },
-                            ]}
-                          >
-                            <Select
-                              options={CLASSIFICATION_SCHEDULE_MODE_OPTIONS}
-                            />
-                          </Form.Item>
-                        </Col>
-                        <Col xs={24} md={12}>
-                          <Form.Item
-                            label="任务执行时间"
-                            name="classificationExecuteAt"
-                            rules={[
-                              {
-                                required: true,
-                                message: "请选择分类分级任务执行时间",
-                              },
-                            ]}
-                          >
-                            <DatePicker
-                              showTime
-                              format="YYYY-MM-DD HH:mm:ss"
-                              style={{ width: "100%" }}
-                            />
+                          <Form.Item label="执行策略">
+                            <Input value="导入完成后自动执行" readOnly />
                           </Form.Item>
                         </Col>
                       </Row>
@@ -1163,13 +1296,14 @@ const DataImportForm: React.FC = () => {
                 loading={submitting}
                 onClick={() => void handleSubmit()}
               >
-                提交并创建任务
+                {isEditMode ? "保存修改" : "提交并创建任务"}
               </Button>
             )}
             <Button onClick={() => navigate(backPath)}>取消</Button>
           </Space>
         </div>
       </div>
+      </Spin>
     </PageContainer>
   );
 };

@@ -13,11 +13,6 @@ export class CreateDataAssetDto {
   @IsString()
   sourceType!: string;
 
-  @ApiPropertyOptional({ example: 'user_center' })
-  @IsOptional()
-  @IsString()
-  sourceDatabaseName?: string;
-
   @ApiProperty({ example: '10.0.0.12' })
   @IsString()
   ipAddress!: string;

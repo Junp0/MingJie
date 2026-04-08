@@ -12,6 +12,14 @@ import React, { useRef, useState } from "react";
 
 const { Search } = Input;
 
+const statusMap = {
+  pending: { color: "default", text: "等待中" },
+  running: { color: "blue", text: "运行中" },
+  completed: { color: "green", text: "已完成" },
+  failed: { color: "red", text: "失败" },
+  stopped: { color: "orange", text: "已停止" },
+};
+
 const DataAssetImport: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const navigate = useNavigate();
@@ -57,17 +65,17 @@ const DataAssetImport: React.FC = () => {
       align: "center",
     },
     {
+      title: "数据库",
+      dataIndex: "databaseName",
+      search: false,
+      align: "center",
+      render: (_, record) => record.databaseName || "-",
+    },
+    {
       title: "状态",
       dataIndex: "status",
       search: false,
       render: (_, record) => {
-        const statusMap = {
-          pending: { color: "default", text: "等待中" },
-          running: { color: "blue", text: "运行中" },
-          completed: { color: "green", text: "已完成" },
-          failed: { color: "red", text: "失败" },
-          stopped: { color: "orange", text: "已停止" },
-        };
         const status = statusMap[record.status];
         return <Tag color={status.color}>{status.text}</Tag>;
       },
@@ -141,6 +149,14 @@ const DataAssetImport: React.FC = () => {
             onClick={() => navigate(`/data-assets/import-detail/${record.id}`)}
           >
             查看详情
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            style={{ padding: 0, margin: 0 }}
+            onClick={() => navigate(`/data-assets/data-import-form/${record.id}`)}
+          >
+            编辑
           </Button>
           {record.status === "pending" || record.status === "stopped" ? (
             <Button

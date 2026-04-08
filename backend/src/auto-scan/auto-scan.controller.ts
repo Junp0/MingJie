@@ -34,9 +34,9 @@ export class AutoScanController {
     return this.autoScanService.removeRule(id);
   }
 
-  @Post('execute')
-  executeScan() {
-    return this.autoScanService.executeScan();
+  @Post('rules/:id/execute')
+  executeScan(@Param('id') id: string) {
+    return this.autoScanService.executeScan(id);
   }
 
   @Patch('results/:id/ignore')

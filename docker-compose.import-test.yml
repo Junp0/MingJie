@@ -13,11 +13,20 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=50
+      - --table-open-cache=200
+      - --performance-schema=OFF
     volumes:
       - import_mysql_3308_data:/var/lib/mysql
       - ./scripts/mysql3308-entrypoint-init.sh:/docker-entrypoint-initdb.d/01-mysql3308-entrypoint-init.sh:ro
       - ./scripts/mysql3308-import-demo.sql:/docker-entrypoint-initdb.d/10-mysql3308-import-demo.sql:ro
       - ./scripts/mysql3308-protection-feature-demo.sql:/docker-entrypoint-initdb.d/11-mysql3308-protection-feature-demo.sql:ro
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     healthcheck:
       test:
         - CMD-SHELL
@@ -40,11 +49,20 @@ services:
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=128M
+      - --innodb-log-buffer-size=8M
+      - --max-connections=50
+      - --table-open-cache=200
+      - --performance-schema=OFF
     volumes:
       - import_mysql_3310_data:/var/lib/mysql
       - ./scripts/mysql3310-entrypoint-init.sh:/docker-entrypoint-initdb.d/01-mysql3310-entrypoint-init.sh:ro
       - ./scripts/mysql3310-rich-demo.sql:/docker-entrypoint-initdb.d/10-mysql3310-rich-demo.sql:ro
       - ./scripts/mysql3310-protection-rich-demo.sql:/docker-entrypoint-initdb.d/11-mysql3310-protection-rich-demo.sql:ro
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     healthcheck:
       test:
         - CMD-SHELL

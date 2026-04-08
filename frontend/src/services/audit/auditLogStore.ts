@@ -8,7 +8,9 @@ export type AuditLogCategory =
   | "CLASSIFICATION_TASK"
   | "AUTO_SCAN"
   | "TEMPLATE"
-  | "PROTECTION_FEATURE";
+  | "PROTECTION_FEATURE"
+  | "USER_MANAGEMENT"
+  | "ROLE_MANAGEMENT";
 
 export type AuditLogResult = "SUCCESS" | "FAILED" | "RUNNING" | "INFO";
 

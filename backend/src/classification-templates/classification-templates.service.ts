@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { AuditLogCategory, AuditLogResult, TemplateStatus } from '@prisma/client';
+import { AuditLogCategory, AuditLogResult, ClassificationTaskSource, ClassificationTaskStatus, TemplateStatus } from '@prisma/client';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { ClassificationTasksService } from '../classification-tasks/classification-tasks.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassificationTemplateDto } from './dto/create-classification-template.dto';
 import { UpdateClassificationTemplateDto } from './dto/update-classification-template.dto';
@@ -50,6 +51,7 @@ export class ClassificationTemplatesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogsService: AuditLogsService,
+    private readonly classificationTasksService: ClassificationTasksService,
   ) {}
 
   private getInclude() {
@@ -179,6 +181,41 @@ export class ClassificationTemplatesService {
         sortOrder: 17,
       },
       {
+        key: 'network_identity',
+        name: '网络标识',
+        description: 'IP 地址、设备指纹、Cookie、IMEI 等网络与设备标识数据。',
+        parentKey: 'personal_info',
+        sortOrder: 18,
+      },
+      {
+        key: 'education_career',
+        name: '教育职业',
+        description: '学历学位、职业信息、工作经历、资格证书等教育与职业数据。',
+        parentKey: 'personal_info',
+        sortOrder: 19,
+      },
+      {
+        key: 'religion_ethnicity',
+        name: '宗教信仰与民族',
+        description: '宗教信仰、民族、政治面貌等《个保法》明确列为敏感个人信息的数据。',
+        parentKey: 'personal_info',
+        sortOrder: 20,
+      },
+      {
+        key: 'minor_info',
+        name: '未成年人信息',
+        description: '不满十四周岁未成年人的个人信息，《个保法》要求制定专门处理规则。',
+        parentKey: 'personal_info',
+        sortOrder: 21,
+      },
+      {
+        key: 'property_info',
+        name: '财产信息',
+        description: '房产、车辆、收入、纳税、公积金等个人财产与经济状况数据。',
+        parentKey: 'personal_info',
+        sortOrder: 22,
+      },
+      {
         key: 'business_data',
         name: '业务信息',
         description: '围绕交易、客户、经营和风控活动产生的业务数据。',
@@ -213,6 +250,27 @@ export class ClassificationTemplatesService {
         sortOrder: 24,
       },
       {
+        key: 'contract_agreement',
+        name: '合同协议',
+        description: '合同文本、保密协议、招投标数据、SLA 等合同与协议数据。',
+        parentKey: 'business_data',
+        sortOrder: 25,
+      },
+      {
+        key: 'supply_logistics',
+        name: '供应链与物流',
+        description: '供应商信息、物流单号、仓储数据、采购明细等供应链数据。',
+        parentKey: 'business_data',
+        sortOrder: 26,
+      },
+      {
+        key: 'intellectual_property',
+        name: '知识产权',
+        description: '专利技术、源代码、商业秘密、核心算法等知识产权数据。',
+        parentKey: 'business_data',
+        sortOrder: 27,
+      },
+      {
         key: 'management_security',
         name: '管理与安全',
         description: '围绕组织管理、安全运维、审计留痕的支撑类数据。',
@@ -238,6 +296,13 @@ export class ClassificationTemplatesService {
         description: '主密钥、私钥、配置凭据、系统控制参数等。',
         parentKey: 'management_security',
         sortOrder: 33,
+      },
+      {
+        key: 'infra_config',
+        name: '基础设施配置',
+        description: '服务器清单、数据库连接串、云账号凭证、网络拓扑等基础设施配置数据。',
+        parentKey: 'management_security',
+        sortOrder: 34,
       },
       {
         key: 'public_data',
@@ -515,7 +580,10 @@ export class ClassificationTemplatesService {
   async seed() {
     const count = await this.prisma.classificationTemplate.count();
     if (count > 0) return;
-    await this.createDefaultTemplate();
+    const template = await this.createDefaultTemplate();
+    if (template) {
+      await this.createLinkedTask(template.id, template.templateName);
+    }
   }
 
   async findAll() {
@@ -554,9 +622,32 @@ export class ClassificationTemplatesService {
         targetName: created.templateName,
         detail: created.description ?? '新建分类模板',
       });
+
+      await this.createLinkedTask(created.id, created.templateName);
     }
 
     return created;
+  }
+
+  private async createLinkedTask(templateId: string, templateName: string) {
+    const taskName = `${templateName}——单次执行——分类分级任务`;
+    // Check if a linked task already exists
+    const existing = await this.prisma.classificationTask.findFirst({
+      where: { templateId },
+    });
+    if (existing) return existing;
+
+    return this.classificationTasksService.create({
+      taskName,
+      dataSource: templateName,
+      dataAssetIds: [],
+      dataType: 'database',
+      classificationType: 'automatic',
+      templateId,
+      scheduleMode: 'single',
+      source: ClassificationTaskSource.CLASSIFICATION_CENTER,
+      status: ClassificationTaskStatus.PENDING,
+    });
   }
 
   async update(id: string, dto: UpdateClassificationTemplateDto) {

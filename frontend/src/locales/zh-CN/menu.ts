@@ -22,4 +22,7 @@ export default {
   'menu.data-classification.template-detail': '模版详情',
   'menu.data-classification.template-add': '新增模版',
   'menu.audit-logs': '审计日志',
+  'menu.system': '系统管理',
+  'menu.system.user-management': '用户管理',
+  'menu.system.role-management': '角色管理',
 };

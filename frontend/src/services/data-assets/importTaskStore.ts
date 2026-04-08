@@ -8,7 +8,7 @@ export type ImportTaskStatus =
   | "completed"
   | "failed"
   | "stopped";
-export type ImportScheduleMode = "single" | "daily" | "weekly" | "monthly";
+export type ImportScheduleMode = "immediate" | "single" | "daily" | "weekly" | "monthly";
 export type ImportSampleStrategy = "latest" | "random";
 export type ImportSampleStorageMode = "replace" | "incremental";
 
@@ -28,6 +28,7 @@ export interface ImportedColumnRecord {
 
 export interface ImportedTableRecord {
   id: string;
+  databaseName: string;
   tableName: string;
   tableComment: string;
   rowCount: number;
@@ -80,7 +81,7 @@ export interface DataAssetImportFormValues {
   sourceName: string;
   sourceType: ImportSourceType;
   databaseType: string;
-  databaseName: string;
+  databaseName: string | string[];
   ipAddress: string;
   port: number;
   username: string;
@@ -110,6 +111,7 @@ type BackendImportTask = {
   ipAddress: string;
   port: number;
   databaseName?: string | null;
+  databaseNames?: string[] | null;
   sourceUsername?: string | null;
   scheduleMode?: string | null;
   executeAt?: string | null;
@@ -136,6 +138,7 @@ type BackendImportTask = {
         deletedAt?: string | null;
         tables?: Array<{
           id: string;
+          databaseName?: string;
           tableName: string;
           tableComment?: string | null;
           rowCount?: number;
@@ -208,6 +211,7 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
   const schemaTables: ImportedTableRecord[] = (item.dataAsset?.tables ?? []).map(
     (table) => ({
       id: table.id,
+      databaseName: table.databaseName ?? "",
       tableName: table.tableName,
       tableComment: table.tableComment ?? "",
       rowCount: table.rowCount ?? 0,
@@ -236,7 +240,9 @@ const mapImportTask = (item: BackendImportTask): DataAssetImportRecord => {
     sourceType: "database",
     sourceName: item.sourceName,
     databaseType: item.sourceType?.toUpperCase?.() || "DATABASE",
-    databaseName: item.databaseName ?? item.sourceName,
+    databaseName: (Array.isArray(item.databaseNames) && item.databaseNames.length > 0)
+      ? item.databaseNames.join('、')
+      : (item.databaseName ?? item.sourceName),
     sourceConfig: `${item.sourceType}://${item.ipAddress}:${item.port}`,
     ipAddress: item.ipAddress,
     port: item.port,
@@ -305,6 +311,13 @@ export const createImportTask = async (
     runClassificationImmediatelyAfterImport?: boolean;
   }
 ): Promise<DataAssetImportRecord> => {
+  const scheduleMode = values.scheduleMode === "immediate" ? "single" : values.scheduleMode;
+  const runImmediately = values.scheduleMode === "immediate" ? true : (options?.runImmediately ?? true);
+
+  const databaseNames = Array.isArray(values.databaseName)
+    ? values.databaseName.map((n) => n.trim()).filter(Boolean)
+    : [values.databaseName.trim()];
+
   const data = await request<BackendImportTask>("/api/import-tasks", {
     method: "POST",
     data: {
@@ -312,20 +325,21 @@ export const createImportTask = async (
       sourceType: values.databaseType.toLowerCase(),
       ipAddress: values.ipAddress.trim(),
       port: values.port,
-      databaseName: values.databaseName.trim(),
+      databaseName: databaseNames[0],
+      databaseNames,
       sourceUsername: values.username.trim(),
       sourcePassword: values.password,
       assetGroupId: values.assetGroupId,
       classificationTaskId: options?.classificationTaskId,
-      scheduleMode: values.scheduleMode,
-      executeAt: values.executeAt ?? null,
+      scheduleMode,
+      executeAt: values.scheduleMode === "immediate" ? null : (values.executeAt ?? null),
       sampleCount: values.sampleCount,
       sampleStrategy: values.sampleStrategy,
       sampleStorageMode: values.sampleStorageMode,
       description: values.description?.trim() ?? "",
       progress: 0,
       status: "PENDING",
-      runImmediately: options?.runImmediately ?? true,
+      runImmediately,
       runClassificationImmediatelyAfterImport:
         options?.runClassificationImmediatelyAfterImport ?? false,
     },
@@ -383,6 +397,40 @@ export const linkClassificationTaskToImport = async (
       },
     }
   );
+
+  return mapImportTask(data);
+};
+
+export const updateImportTask = async (
+  taskId: string,
+  values: DataAssetImportFormValues,
+): Promise<DataAssetImportRecord> => {
+  const scheduleMode = values.scheduleMode === "immediate" ? "single" : values.scheduleMode;
+
+  const databaseNames = Array.isArray(values.databaseName)
+    ? values.databaseName.map((n) => n.trim()).filter(Boolean)
+    : [values.databaseName.trim()];
+
+  const data = await request<BackendImportTask>(`/api/import-tasks/${taskId}`, {
+    method: "PATCH",
+    data: {
+      sourceName: values.sourceName.trim(),
+      sourceType: values.databaseType.toLowerCase(),
+      ipAddress: values.ipAddress.trim(),
+      port: values.port,
+      databaseName: databaseNames[0],
+      databaseNames,
+      sourceUsername: values.username.trim(),
+      sourcePassword: values.password,
+      assetGroupId: values.assetGroupId,
+      scheduleMode,
+      executeAt: values.scheduleMode === "immediate" ? null : (values.executeAt ?? null),
+      sampleCount: values.sampleCount,
+      sampleStrategy: values.sampleStrategy,
+      sampleStorageMode: values.sampleStorageMode,
+      description: values.description?.trim() ?? "",
+    },
+  });
 
   return mapImportTask(data);
 };

@@ -148,6 +148,6 @@ export const layout: RunTimeLayoutConfig = ({
  * @doc https://umijs.org/docs/max/request#配置
  */
 export const request: RequestConfig = {
-  baseURL: process.env.NODE_ENV === 'production' ? 'https://proapi.azurewebsites.net' : undefined,
+  baseURL: process.env.NODE_ENV === 'production' ? 'https://api.secops.top' : undefined,
   ...errorConfig,
 };

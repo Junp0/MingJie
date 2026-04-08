@@ -75,28 +75,10 @@ export class ClassificationTasksService {
   }
 
   private calculateNextExecuteAt(
-    scheduleMode?: string | null,
+    _scheduleMode?: string | null,
     executeAt?: Date | null,
-    referenceTime: Date = new Date(),
   ) {
-    if (!executeAt || !scheduleMode || scheduleMode === 'single') {
-      return executeAt ?? null;
-    }
-
-    const nextExecuteAt = new Date(executeAt);
-    while (nextExecuteAt <= referenceTime) {
-      if (scheduleMode === 'daily') {
-        nextExecuteAt.setDate(nextExecuteAt.getDate() + 1);
-      } else if (scheduleMode === 'weekly') {
-        nextExecuteAt.setDate(nextExecuteAt.getDate() + 7);
-      } else if (scheduleMode === 'monthly') {
-        nextExecuteAt.setMonth(nextExecuteAt.getMonth() + 1);
-      } else {
-        return executeAt;
-      }
-    }
-
-    return nextExecuteAt;
+    return executeAt ?? null;
   }
 
   private matchRuleValue(value: string, matcher: string, expected: string) {
@@ -417,16 +399,6 @@ export class ClassificationTasksService {
       where: { id },
       data: {
         status: ClassificationTaskStatus.RUNNING,
-        ...(task.scheduleMode !== 'single' &&
-        task.executeAt &&
-        task.executeAt <= new Date()
-          ? {
-              executeAt: this.calculateNextExecuteAt(
-                task.scheduleMode,
-                task.executeAt,
-              ),
-            }
-          : {}),
       },
     });
 

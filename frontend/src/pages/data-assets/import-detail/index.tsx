@@ -10,12 +10,13 @@ import {
   getClassificationTaskById,
   type ClassificationTaskRecord,
 } from "@/services/data-classification/classificationTaskStore";
-import { ArrowLeftOutlined, LinkOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, DatabaseOutlined, EditOutlined, LinkOutlined } from "@ant-design/icons";
 import { PageContainer } from "@ant-design/pro-components";
 import { useNavigate, useParams } from "@umijs/max";
 import {
   Button,
   Card,
+  Collapse,
   Descriptions,
   Empty,
   Modal,
@@ -94,98 +95,6 @@ const ImportDetail: React.FC = () => {
       cancelled = true;
     };
   }, [id, refreshSeed]);
-
-  const importTaskData = useMemo(() => {
-    if (!importTask) {
-      return [];
-    }
-
-    return [
-      {
-        id: `${importTask.id}-1`,
-        sequence: 1,
-        databaseName: importTask.databaseName,
-        importProgress: importTask.progress,
-        importStatus: importTask.status,
-        importCompleteTime:
-          importTask.status === "completed"
-            ? importTask.endTime || importTask.updateTime
-            : "-",
-        totalTables: importTask.importedTableCount,
-        importedRecords: importTask.importedRecordCount,
-      },
-    ];
-  }, [importTask]);
-
-  const importTaskColumns = [
-    {
-      title: "序号",
-      dataIndex: "sequence",
-      key: "sequence",
-      width: 80,
-      align: "center" as const,
-    },
-    {
-      title: "数据资产名称",
-      dataIndex: "databaseName",
-      key: "databaseName",
-      align: "center" as const,
-    },
-    {
-      title: "导入进度",
-      dataIndex: "importProgress",
-      key: "importProgress",
-      width: 160,
-      render: (progress: number, record: { importStatus: string }) => (
-        <Progress
-          percent={progress}
-          size="small"
-          status={record.importStatus === "failed" ? "exception" : undefined}
-        />
-      ),
-      align: "center" as const,
-    },
-    {
-      title: "导入状态",
-      dataIndex: "importStatus",
-      key: "importStatus",
-      width: 100,
-      render: (status: string) => {
-        const statusMap = {
-          pending: { color: "default", text: "等待中" },
-          running: { color: "blue", text: "运行中" },
-          completed: { color: "green", text: "已完成" },
-          failed: { color: "red", text: "失败" },
-          stopped: { color: "orange", text: "已停止" },
-        };
-        const statusInfo = statusMap[status as keyof typeof statusMap];
-        return <Tag color={statusInfo.color}>{statusInfo.text}</Tag>;
-      },
-      align: "center" as const,
-    },
-    {
-      title: "导入完成时间",
-      dataIndex: "importCompleteTime",
-      key: "importCompleteTime",
-      width: 180,
-      align: "center" as const,
-    },
-    {
-      title: "总表数",
-      dataIndex: "totalTables",
-      key: "totalTables",
-      width: 100,
-      align: "center" as const,
-    },
-    {
-      title: "已导入记录",
-      dataIndex: "importedRecords",
-      key: "importedRecords",
-      width: 140,
-      render: (count: number) => count.toLocaleString(),
-      align: "center" as const,
-    },
-  ];
 
   const tableColumns = [
     {
@@ -300,21 +209,37 @@ const ImportDetail: React.FC = () => {
     },
   ];
 
+  const allSchemaTables = useMemo(() => {
+    if (!importTask) return [];
+    return importTask.schemaTables;
+  }, [importTask]);
+
   const visibleSchemaTables = useMemo(
     () =>
-      !importTask
-        ? []
-        :
       hideDeletedObjects
-        ? importTask.schemaTables
+        ? allSchemaTables
             .filter((table) => !table.isDeleted)
             .map((table) => ({
               ...table,
               columns: table.columns.filter((column) => !column.isDeleted),
             }))
-        : importTask.schemaTables,
-    [hideDeletedObjects, importTask]
+        : allSchemaTables,
+    [hideDeletedObjects, allSchemaTables]
   );
+
+  const groupedByDatabase = useMemo(() => {
+    const map = new Map<string, typeof visibleSchemaTables>();
+    for (const table of visibleSchemaTables) {
+      const key = table.databaseName || "未知库";
+      const group = map.get(key) ?? [];
+      group.push(table);
+      map.set(key, group);
+    }
+    return Array.from(map.entries()).map(([databaseName, tables]) => ({
+      databaseName,
+      tables,
+    }));
+  }, [visibleSchemaTables]);
 
   if (!importTask) {
     return (
@@ -339,6 +264,13 @@ const ImportDetail: React.FC = () => {
       onBack={() => navigate("/data-assets/data-import")}
       backIcon={<ArrowLeftOutlined />}
       extra={[
+        <Button
+          key="edit"
+          icon={<EditOutlined />}
+          onClick={() => navigate(`/data-assets/data-import-form/${importTask.id}`)}
+        >
+          编辑
+        </Button>,
         importTask.status === "pending" || importTask.status === "stopped" ? (
           <Button
             key="start"
@@ -560,17 +492,6 @@ const ImportDetail: React.FC = () => {
           )}
         </Card>
 
-        <Card title="导入执行情况" size="small">
-          <Table
-            columns={importTaskColumns}
-            dataSource={importTaskData}
-            rowKey="id"
-            pagination={false}
-            size="small"
-            bordered
-          />
-        </Card>
-
         <Card
           title="当前库表结构"
           size="small"
@@ -589,28 +510,43 @@ const ImportDetail: React.FC = () => {
             </Space>
           }
         >
-          {visibleSchemaTables.length ? (
-            <Table
-              columns={tableColumns}
-              dataSource={visibleSchemaTables}
-              rowKey="id"
-              pagination={false}
-              size="small"
-              bordered
-              expandable={{
-                expandedRowRender: (tableRecord: ImportedTableRecord) => (
+          {groupedByDatabase.length ? (
+            <Collapse
+              defaultActiveKey={groupedByDatabase.map((g) => g.databaseName)}
+              items={groupedByDatabase.map((group) => ({
+                key: group.databaseName,
+                label: (
+                  <Space>
+                    <DatabaseOutlined />
+                    <Text strong>{group.databaseName}</Text>
+                    <Tag>{group.tables.length} 张表</Tag>
+                  </Space>
+                ),
+                children: (
                   <Table
-                    columns={columnColumns}
-                    dataSource={tableRecord.columns}
+                    columns={tableColumns}
+                    dataSource={group.tables}
                     rowKey="id"
                     pagination={false}
                     size="small"
                     bordered
+                    expandable={{
+                      expandedRowRender: (tableRecord: ImportedTableRecord) => (
+                        <Table
+                          columns={columnColumns}
+                          dataSource={tableRecord.columns}
+                          rowKey="id"
+                          pagination={false}
+                          size="small"
+                          bordered
+                        />
+                      ),
+                      rowExpandable: (tableRecord: ImportedTableRecord) =>
+                        tableRecord.columns.length > 0,
+                    }}
                   />
                 ),
-                rowExpandable: (tableRecord: ImportedTableRecord) =>
-                  tableRecord.columns.length > 0,
-              }}
+              }))}
             />
           ) : (
             <Empty

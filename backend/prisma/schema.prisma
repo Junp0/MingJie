@@ -7,9 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  ADMIN
-  USER
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  code        String       @unique
+  description String?
+  permissions Json
+  isSystem    Boolean      @default(false)
+  status      CommonStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  users User[]
 }
 
 enum CommonStatus {
@@ -76,6 +85,8 @@ enum AuditLogCategory {
   AUTO_SCAN
   TEMPLATE
   PROTECTION_FEATURE
+  USER_MANAGEMENT
+  ROLE_MANAGEMENT
 }
 
 enum AuditLogResult {
@@ -93,7 +104,7 @@ model User {
   avatar       String?
   email        String?      @unique
   phone        String?      @unique
-  role         UserRole     @default(USER)
+  roleId       String?
   title        String?
   department   String?
   signature    String?
@@ -101,9 +112,12 @@ model User {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
+  role                Role?                @relation(fields: [roleId], references: [id])
   importTasks         ImportTask[]
   classificationTasks ClassificationTask[]
   protectionFeatures  ProtectionFeature[]
+
+  @@index([roleId])
 }
 
 model AssetGroup {
@@ -129,28 +143,27 @@ model AssetGroup {
 }
 
 model DataAsset {
-  id                 String       @id @default(cuid())
-  name               String
-  sourceType         String
-  sourceDatabaseName String?
-  ipAddress          String
-  port               Int
-  status             CommonStatus @default(ACTIVE)
-  dataLevel          DataLevel
-  owner              String
-  department         String
-  tags               Json?
-  description        String?
-  tableCount         Int          @default(0)
-  fieldCount         Int          @default(0)
-  sizeBytes          Int          @default(0)
-  recordCount        Int          @default(0)
-  isDeleted          Boolean      @default(false)
-  deletedAt          DateTime?
-  assetGroupId       String
-  scanResultId       String?      @unique
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  id           String       @id @default(cuid())
+  name         String
+  sourceType   String
+  ipAddress    String
+  port         Int
+  status       CommonStatus @default(ACTIVE)
+  dataLevel    DataLevel
+  owner        String
+  department   String
+  tags         Json?
+  description  String?
+  tableCount   Int          @default(0)
+  fieldCount   Int          @default(0)
+  sizeBytes    Int          @default(0)
+  recordCount  Int          @default(0)
+  isDeleted    Boolean      @default(false)
+  deletedAt    DateTime?
+  assetGroupId String
+  scanResultId String?      @unique
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   assetGroup  AssetGroup       @relation(fields: [assetGroupId], references: [id])
   scanResult  AutoScanResult?  @relation(fields: [scanResultId], references: [id])
@@ -167,6 +180,7 @@ model ImportTask {
   ipAddress            String
   port                 Int
   databaseName         String?
+  databaseNames        Json?            @default("[]")
   sourceUsername       String?
   sourcePassword       String?
   assetGroupId         String
@@ -206,6 +220,7 @@ model DataAssetTable {
   id           String   @id @default(cuid())
   assetId      String
   importTaskId String?
+  databaseName String   @default("")
   tableName    String
   tableComment String?
   engine       String?
@@ -220,7 +235,7 @@ model DataAssetTable {
   importTask ImportTask?       @relation(fields: [importTaskId], references: [id], onDelete: SetNull)
   columns    DataAssetColumn[]
 
-  @@unique([assetId, tableName])
+  @@unique([assetId, databaseName, tableName])
   @@index([assetId])
   @@index([importTaskId])
 }
@@ -263,6 +278,9 @@ model AutoScanRule {
   sourceType     String?
   status         ScanTaskStatus @default(DRAFT)
   description    String?
+  lastScannedAt  DateTime?
+  scanProgress   Int?
+  scanStatus     String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

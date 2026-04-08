@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ImportTaskStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsIn,
   IsEnum,
@@ -34,6 +35,12 @@ export class CreateImportTaskDto {
   @IsOptional()
   @IsString()
   databaseName?: string;
+
+  @ApiPropertyOptional({ example: ['user_center', 'order_db'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  databaseNames?: string[];
 
   @ApiPropertyOptional({ example: 'importer' })
   @IsOptional()

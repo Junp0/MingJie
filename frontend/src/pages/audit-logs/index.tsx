@@ -21,6 +21,8 @@ const CATEGORY_OPTIONS: Record<
   AUTO_SCAN: { text: "自动扫描", color: "cyan" },
   TEMPLATE: { text: "分类模板", color: "gold" },
   PROTECTION_FEATURE: { text: "保护特征", color: "volcano" },
+  USER_MANAGEMENT: { text: "用户管理", color: "orange" },
+  ROLE_MANAGEMENT: { text: "角色管理", color: "magenta" },
 };
 
 const RESULT_OPTIONS: Record<AuditLogResult, { text: string; color: string }> = {

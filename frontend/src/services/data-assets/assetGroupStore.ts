@@ -184,3 +184,26 @@ export const listAssetGroupSelectOptions = async (): Promise<Array<{ value: stri
       label: getAssetGroupPathNames(groups, group.id).join(' / '),
     }));
 };
+
+interface TreeSelectNode {
+  value: string;
+  title: string;
+  children: TreeSelectNode[];
+}
+
+export const listAssetGroupTreeSelectOptions = async (): Promise<TreeSelectNode[]> => {
+  const groups = await listAssetGroups();
+  const activeGroups = groups.filter((group) => group.status !== 'archived');
+
+  const buildTree = (parentId: string | null): TreeSelectNode[] =>
+    activeGroups
+      .filter((group) => group.parentId === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+      .map((group) => ({
+        value: group.id,
+        title: group.name,
+        children: buildTree(group.id),
+      }));
+
+  return buildTree(null);
+};

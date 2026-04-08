@@ -4,11 +4,7 @@ import { formatBeijingDateTime } from "@/utils/datetime";
 
 export type ClassificationTaskDataType = "database" | "file" | "api";
 export type ClassificationType = "automatic" | "manual" | "hybrid";
-export type ClassificationTaskScheduleMode =
-  | "single"
-  | "daily"
-  | "weekly"
-  | "monthly";
+export type ClassificationTaskScheduleMode = "single";
 export type ClassificationTaskStatus =
   | "waiting_import"
   | "pending"

@@ -1,12 +1,23 @@
-import { Injectable } from '@nestjs/common';
-import { CommonStatus, DataLevel } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  AuditLogCategory,
+  AuditLogResult,
+  ClassificationTaskSource,
+  CommonStatus,
+  DataLevel,
+  Prisma,
+} from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDataAssetDto } from './dto/create-data-asset.dto';
 import { UpdateDataAssetDto } from './dto/update-data-asset.dto';
 
 @Injectable()
 export class DataAssetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditLogsService: AuditLogsService,
+  ) {}
 
   private getInclude() {
     return {
@@ -17,6 +28,18 @@ export class DataAssetsService {
         take: 1,
       },
     } as const;
+  }
+
+  private normalizeAssetIds(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return Array.from(
+      new Set(
+        value
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    );
   }
 
   async seed() {
@@ -31,7 +54,6 @@ export class DataAssetsService {
         {
           name: '用户中心 MySQL 主库',
           sourceType: 'mysql',
-          sourceDatabaseName: 'user_center',
           ipAddress: '10.10.0.12',
           port: 3306,
           status: CommonStatus.ACTIVE,
@@ -62,7 +84,6 @@ export class DataAssetsService {
       data: {
         ...dto,
         tags: dto.tags ?? [],
-        sourceDatabaseName: dto.sourceDatabaseName,
         tableCount: dto.tableCount ?? 0,
         fieldCount: dto.fieldCount ?? 0,
         sizeBytes: dto.sizeBytes ?? 0,
@@ -83,7 +104,82 @@ export class DataAssetsService {
     });
   }
 
-  remove(id: string) {
-    return this.prisma.dataAsset.delete({ where: { id } });
+  async remove(id: string) {
+    const asset = await this.prisma.dataAsset.findUnique({
+      where: { id },
+      include: {
+        importTasks: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!asset) {
+      throw new NotFoundException('数据资产不存在');
+    }
+
+    // 1. Unlink this asset from all classification tasks that reference it
+    const classificationTasks = await this.prisma.classificationTask.findMany({
+      where: {
+        NOT: { dataAssetIds: { equals: Prisma.DbNull } },
+      },
+    });
+
+    for (const ct of classificationTasks) {
+      const assetIds = this.normalizeAssetIds(ct.dataAssetIds);
+      if (!assetIds.includes(id)) continue;
+
+      const nextAssetIds = assetIds.filter((aid) => aid !== id);
+
+      if (
+        nextAssetIds.length === 0 &&
+        ct.source === ClassificationTaskSource.ASSET_IMPORT
+      ) {
+        // If no assets left and it was created from import, check if any other import tasks reference it
+        const linkedImportCount = await this.prisma.importTask.count({
+          where: { classificationTaskId: ct.id },
+        });
+        if (linkedImportCount === 0) {
+          await this.prisma.classificationTask.delete({ where: { id: ct.id } });
+          continue;
+        }
+      }
+
+      const nextAssets = nextAssetIds.length
+        ? await this.prisma.dataAsset.findMany({
+            where: { id: { in: nextAssetIds } },
+            select: { name: true },
+          })
+        : [];
+
+      await this.prisma.classificationTask.update({
+        where: { id: ct.id },
+        data: {
+          dataAssetIds: nextAssetIds as Prisma.InputJsonValue,
+          dataSource: nextAssets.map((a) => a.name).join('、') || '未关联数据资产',
+        },
+      });
+    }
+
+    // 2. Disconnect import tasks from this asset (don't delete them, just unlink)
+    await this.prisma.importTask.updateMany({
+      where: { dataAssetId: id },
+      data: { dataAssetId: null },
+    });
+
+    // 3. Delete the data asset (tables & columns cascade via schema)
+    await this.prisma.dataAsset.delete({ where: { id } });
+
+    await this.auditLogsService.record({
+      category: AuditLogCategory.ASSET_GROUP,
+      action: '删除数据资产',
+      result: AuditLogResult.SUCCESS,
+      targetType: 'data-asset',
+      targetId: id,
+      targetName: asset.name,
+      detail: `删除数据资产: ${asset.name}（${asset.ipAddress}:${asset.port}）`,
+    });
+
+    return { success: true };
   }
 }

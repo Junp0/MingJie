@@ -174,7 +174,21 @@ export default defineConfig({
    */
   // Temporarily disable mako during local full-stack debugging; default bundler is more stable here.
   // mako: {},
+  /**
+   * @name MFSU 依赖预构建
+   * @description 开启 MFSU 减少主进程编译量，避免全量编译导致 OOM
+   */
+  mfsu: {
+    strategy: 'normal',
+  },
   esbuildMinifyIIFE: true,
+  /**
+   * @name 代码分割优化
+   * @description 按路由拆分，减少首次编译和加载时的文件读取量
+   */
+  codeSplitting: {
+    jsStrategy: 'granularChunks',
+  },
   requestRecord: {},
   exportStatic: {},
   define: {

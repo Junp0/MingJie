@@ -103,7 +103,6 @@ type BackendAsset = {
   isDeleted?: boolean;
   deletedAt?: string | null;
   sourceType: string;
-  sourceDatabaseName?: string | null;
   ipAddress: string;
   port: number;
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
@@ -182,7 +181,7 @@ const mapAsset = (item: BackendAsset): DataAssetRecord => {
     department: item.department,
     sourceFrom: item.scanResultId
       ? 'scan'
-      : item.sourceDatabaseName
+      : (item.importTasks?.length ?? 0) > 0
       ? 'import'
       : 'manual',
     scanResultId: item.scanResultId ?? undefined,
@@ -218,7 +217,6 @@ export const createDataAsset = async (values: CreateDataAssetValues): Promise<Da
       department: values.department.trim(),
       tags: values.tags ?? [],
       description: values.description?.trim() ?? '',
-      sourceDatabaseName: values.sourceFrom === 'import' ? values.name.trim() : undefined,
       tableCount: values.tableCount ?? 0,
       fieldCount: values.fieldCount ?? 0,
       sizeBytes: values.size ?? 0,
@@ -254,4 +252,10 @@ export const updateDataAsset = async (
   });
 
   return mapAsset(data);
+};
+
+export const deleteDataAsset = async (id: string) => {
+  return request<{ success: boolean }>(`/api/data-assets/${id}`, {
+    method: 'DELETE',
+  });
 };

@@ -15,6 +15,8 @@ export interface AutoScanRule {
   status: AutoScanRuleStatus;
   lastScanTime: string;
   hitCount: number;
+  scanProgress?: number | null;
+  scanStatus?: string;
 }
 
 export interface AutoScanRuleFormValues {
@@ -40,14 +42,19 @@ export interface AutoScanResult {
   claimedAssetId?: string;
   claimedAssetName?: string;
   claimedAt?: string;
+  importTaskId?: string;
 }
 
 type BackendRule = {
   id: string;
   name: string;
   cronExpression?: string | null;
+  description?: string | null;
   sourceType?: string | null;
   status: 'DRAFT' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  lastScannedAt?: string | null;
+  scanProgress?: number | null;
+  scanStatus?: string | null;
   createdAt: string;
   updatedAt: string;
   results?: Array<{ id: string }>;
@@ -67,6 +74,7 @@ type BackendResult = {
   updatedAt: string;
   scanRule?: { id: string; name: string } | null;
   dataAsset?: { id: string; name: string } | null;
+  importTaskId?: string | null;
 };
 
 const getScheduleLabel = (scheduleMode: AutoScanScheduleMode, firstScanTime: string) => {
@@ -92,26 +100,28 @@ const resultStatusMap = (item: BackendResult): AutoScanResultStatus => {
   return 'pending';
 };
 
-const parseScheduleMode = (cronExpression?: string | null): AutoScanScheduleMode => {
-  if (!cronExpression) return 'daily';
-  if (cronExpression.includes('* * *')) return 'daily';
-  if (cronExpression.split(' ').length >= 5) return 'weekly';
-  return 'monthly';
+const parseScheduleMode = (description?: string | null): AutoScanScheduleMode => {
+  if (!description) return 'daily';
+  if (description.startsWith('每月')) return 'monthly';
+  if (description.startsWith('每周')) return 'weekly';
+  return 'daily';
 };
 
 const mapRule = (item: BackendRule): AutoScanRule => {
-  const firstScanTime = formatBeijingDateTime(item.createdAt);
-  const scheduleMode = parseScheduleMode(item.cronExpression);
+  const firstScanTime = formatBeijingDateTime(item.cronExpression ?? item.createdAt);
+  const scheduleMode = parseScheduleMode(item.description);
   return {
     id: item.id,
     ipRange: item.name,
     portRange: item.sourceType ?? '3306',
     scheduleMode,
     firstScanTime,
-    scheduleLabel: getScheduleLabel(scheduleMode, firstScanTime || '2026-03-27 02:00:00'),
+    scheduleLabel: item.description || getScheduleLabel(scheduleMode, firstScanTime || '2026-03-27 02:00:00'),
     status: statusMap(item.status),
-    lastScanTime: formatBeijingDateTime(item.updatedAt),
+    lastScanTime: formatBeijingDateTime(item.lastScannedAt ?? undefined) || '-',
     hitCount: item.results?.length ?? 0,
+    scanProgress: item.scanProgress ?? undefined,
+    scanStatus: item.scanStatus ?? undefined,
   };
 };
 
@@ -129,6 +139,7 @@ const mapResult = (item: BackendResult): AutoScanResult => ({
   claimedAssetId: item.dataAsset?.id,
   claimedAssetName: item.dataAsset?.name,
   claimedAt: item.claimed ? formatBeijingDateTime(item.updatedAt) : undefined,
+  importTaskId: item.importTaskId ?? undefined,
 });
 
 export const listAutoScanRules = async (): Promise<AutoScanRule[]> => {
@@ -181,9 +192,13 @@ export const toggleAutoScanRuleStatus = async (ruleId: string, status: AutoScanR
   return updateAutoScanRule(ruleId, { ...current, status });
 };
 
-export const executeAutoScan = async (): Promise<{ touchedRuleCount: number; createdResultCount: number; matchedResultCount: number }> => {
-  return request<{ touchedRuleCount: number; createdResultCount: number; matchedResultCount: number }>(
-    '/api/auto-scan/execute',
+export const deleteAutoScanRule = async (ruleId: string): Promise<void> => {
+  await request(`/api/auto-scan/rules/${ruleId}`, { method: 'DELETE' });
+};
+
+export const executeAutoScan = async (ruleId: string): Promise<{ message: string }> => {
+  return request<{ message: string }>(
+    `/api/auto-scan/rules/${ruleId}/execute`,
     {
       method: 'POST',
     },
