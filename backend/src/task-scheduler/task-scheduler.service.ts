@@ -89,12 +89,7 @@ export class TaskSchedulerService
       }
 
       for (const task of dueClassificationTasks) {
-        const shouldExecute =
-          task.scheduleMode === 'single'
-            ? task.status === ClassificationTaskStatus.PENDING
-            : true;
-
-        if (!shouldExecute) {
+        if (task.status !== ClassificationTaskStatus.PENDING) {
           continue;
         }
 

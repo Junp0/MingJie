@@ -12,14 +12,15 @@ import {
   TagsOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { Card, Col, Row, Space, Statistic, Typography } from 'antd';
+import { Card, Col, Progress, Row, Spin, Tooltip, Typography } from 'antd';
 import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
 import { collectDataTypes, countCategoryNodes } from '@/services/data-classification/templateStore';
 import { parseBeijingDateTime } from '@/utils/datetime';
 import { useDashboardData } from '../shared/useDashboardData';
+import './index.less';
 
-const { Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 const importSourceLabelMap = {
   database: '数据库',
@@ -54,6 +55,18 @@ const aggregateByKey = <T,>(
   return result;
 };
 
+const chartTips: Record<string, string> = {
+  assetSource: '观察不同来源的数据资产接入比例，识别是否过度集中',
+  assetTrend: '观察近期资产导入活跃度，判断接入是否持续推进',
+  groupField: '识别字段最密集的分组，通常最值得优先治理',
+  rootGroup: '各一级分组承载的数据库、表和字段规模',
+  category: '分类覆盖反映模板目录建设的完整度',
+  level: '分级标签占比是否合理，是否存在级别偏斜',
+  template: '衡量模板建设的深度与颗粒度',
+  governance: '从敏感字段、脱敏、加密和特征四个方向看治理覆盖',
+  taskStatus: '区分任务中心和导入流程两个入口的任务量差异',
+};
+
 const Analysis: React.FC = () => {
   const {
     importTasks,
@@ -65,39 +78,52 @@ const Analysis: React.FC = () => {
     encryptionFeatures,
   } = useDashboardData();
 
+  const isLoading = assetGroups.length === 0 && importTasks.length === 0 && templates.length === 0;
+
   const allDataTypes = useMemo(
     () => templates.flatMap((template) => template.categories.flatMap((category) => collectDataTypes(category))),
     [templates],
   );
+
+  const governancePercent = useMemo(() => {
+    const total = classificationTasks.length;
+    if (total === 0) return 0;
+    const completed = classificationTasks.filter((task) => task.status === 'completed').length;
+    return Math.round((completed / total) * 100);
+  }, [classificationTasks]);
 
   const summaryMetrics = [
     {
       title: '资产总量',
       value: assetGroups.reduce((sum, group) => sum + group.databaseCount, 0),
       suffix: '库',
-      icon: <DatabaseOutlined style={{ color: '#1677ff' }} />,
+      icon: <DatabaseOutlined />,
       extra: `${assetGroups.reduce((sum, group) => sum + group.tableCount, 0)} 张表`,
+      colorClass: 'statCardBlue',
     },
     {
       title: '资产分组',
       value: assetGroups.length,
       suffix: '组',
-      icon: <ApartmentOutlined style={{ color: '#13c2c2' }} />,
+      icon: <ApartmentOutlined />,
       extra: `${assetGroups.filter((group) => group.level === 1).length} 个一级分组`,
+      colorClass: 'statCardCyan',
     },
     {
       title: '分类模板',
       value: templateSummaries.length,
       suffix: '个',
-      icon: <TagsOutlined style={{ color: '#722ed1' }} />,
+      icon: <TagsOutlined />,
       extra: `${templateSummaries.filter((template) => template.status === 'active').length} 个启用`,
+      colorClass: 'statCardPurple',
     },
     {
       title: '治理特征',
       value: maskingFeatures.length + encryptionFeatures.length,
       suffix: '项',
-      icon: <SafetyCertificateOutlined style={{ color: '#fa8c16' }} />,
+      icon: <SafetyCertificateOutlined />,
       extra: `${maskingFeatures.length} 脱敏 / ${encryptionFeatures.length} 加密`,
+      colorClass: 'statCardOrange',
     },
   ];
 
@@ -109,18 +135,19 @@ const Analysis: React.FC = () => {
     [importTasks],
   );
 
-  const assetTrendData = useMemo(
-    () =>
-      Array.from(
-        aggregateByKey(
-          importTasks,
-          (task) => parseBeijingDateTime(task.createTime)?.format('MM-DD') ?? ''
-        ).entries(),
-      )
-        .map(([date, value]) => ({ date, value }))
-        .sort((left, right) => left.date.localeCompare(right.date)),
-    [importTasks],
-  );
+  const assetTrendData = useMemo(() => {
+    const countByDate = aggregateByKey(
+      importTasks,
+      (task) => parseBeijingDateTime(task.createTime)?.format('MM-DD') ?? '',
+    );
+    // Fill in the last 14 days so the axis is continuous
+    const days: { date: string; value: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = dayjs().subtract(i, 'day').format('MM-DD');
+      days.push({ date: d, value: countByDate.get(d) ?? 0 });
+    }
+    return days;
+  }, [importTasks]);
 
   const groupFieldRankingData = useMemo(
     () =>
@@ -202,168 +229,213 @@ const Analysis: React.FC = () => {
     [classificationTasks],
   );
 
-  const chartCardStyle = {
-    height: '100%',
-  } as const;
+  if (isLoading) {
+    return (
+      <PageContainer header={{ title: '全局分类分级概览' }}>
+        <div className="loadingWrap">
+          <Spin size="large" tip="加载数据中..." />
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer
+      className="analysisPage"
       header={{
         title: '全局分类分级概览',
-        subTitle: '从资产、分类、分级、治理能力和分组覆盖五个维度，持续观察全局数据治理情况。',
+        subTitle: '从资产、分类、分级、治理能力和分组覆盖五个维度，持续观察全局数据治理情况',
       }}
     >
-      <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
+      {/* Governance Progress Banner */}
+      <div className="governanceBanner">
+        <div className="governanceBannerLeft">
+          <div className="governanceBannerTitle">数据治理整体进度</div>
+          <div className="governanceBannerSub">
+            已完成 {classificationTasks.filter((t) => t.status === 'completed').length} / {classificationTasks.length} 个分类分级任务
+          </div>
+        </div>
+        <div className="governanceProgressWrap">
+          <Progress
+            percent={governancePercent}
+            strokeColor={{ from: '#1677ff', to: '#13c2c2' }}
+            size={['100%', 14]}
+          />
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }} className="summaryRow">
         {summaryMetrics.map((item) => (
           <Col xs={24} sm={12} xl={6} key={item.title}>
-            <Card style={chartCardStyle}>
-              <Space align="start">
-                <div style={{ fontSize: 24 }}>{item.icon}</div>
+            <Card className={`statCard ${item.colorClass}`} bordered={false}>
+              <div className="statIconWrap">{item.icon}</div>
+              <div>
+                <div className="statTitle">{item.title}</div>
                 <div>
-                  <Statistic title={item.title} value={item.value} suffix={item.suffix} />
-                  <Text type="secondary">{item.extra}</Text>
+                  <span className="statValue">{item.value}</span>
+                  <span className="statSuffix">{item.suffix}</span>
                 </div>
-              </Space>
+                <div className="statExtra">{item.extra}</div>
+              </div>
             </Card>
           </Col>
         ))}
       </Row>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={8}>
-          <Card title="资产来源结构" style={chartCardStyle}>
-            <Paragraph type="secondary">建议长期观察不同来源的数据资产接入比例，识别外部 API、文件或消息链路是否过高集中。</Paragraph>
-            <Pie
-              data={assetSourceData}
-              angleField="value"
-              colorField="type"
-              radius={0.86}
-              innerRadius={0.55}
-              legend={{ position: 'bottom' }}
-              label={{ text: 'type', style: { fontSize: 12 } }}
-              color={['#1677ff', '#13c2c2', '#722ed1', '#fa8c16']}
-            />
+      {/* Chart Row 1 — 4 columns */}
+      <Row gutter={[24, 24]} className="chartRow">
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.assetSource}>资产来源结构</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Pie
+                data={assetSourceData}
+                angleField="value"
+                colorField="type"
+                height={220}
+                radius={0.86}
+                innerRadius={0.55}
+                legend={{ position: 'bottom' }}
+                label={{ text: 'type', style: { fontSize: 11 } }}
+                color={['#1677ff', '#13c2c2', '#722ed1', '#fa8c16']}
+              />
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} xl={8}>
-          <Card title="资产接入趋势" style={chartCardStyle}>
-            <Paragraph type="secondary">适合观察近期资产导入的活跃度，判断资产接入是否持续推进。</Paragraph>
-            <Line
-              data={assetTrendData}
-              xField="date"
-              yField="value"
-              color="#1677ff"
-              point={{ size: 4, shape: 'circle' }}
-            />
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.assetTrend}>资产接入趋势</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Line
+                data={assetTrendData}
+                xField="date"
+                yField="value"
+                height={220}
+                color="#1677ff"
+                point={{ size: 3, shape: 'circle' }}
+                style={{ lineWidth: 2 }}
+              />
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} xl={8}>
-          <Card title="分组字段规模排行" style={chartCardStyle}>
-            <Paragraph type="secondary">用于识别字段最密集的分组，通常这些分组最值得优先治理。</Paragraph>
-            <Bar
-              data={groupFieldRankingData}
-              xField="group"
-              yField="value"
-              color="#27d8ff"
-              legend={false}
-              style={{ radiusTopLeft: 6, radiusTopRight: 6 }}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
-        <Col xs={24} xl={8}>
-          <Card title="一级分组资产覆盖" style={chartCardStyle}>
-            <Paragraph type="secondary">建议在概览里长期展示各一级分组承载的数据库、表和字段规模，帮助快速判断分组重心。</Paragraph>
-            <Column
-              data={rootGroupCoverageData}
-              xField="group"
-              yField="value"
-              colorField="metric"
-              isGroup
-              label={{ position: 'top', style: { fontSize: 11 } }}
-              color={['#4d8dff', '#13c2c2', '#fa8c16']}
-            />
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.groupField}>分组字段规模排行</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Bar
+                data={groupFieldRankingData}
+                xField="group"
+                yField="value"
+                height={220}
+                color="#27d8ff"
+                legend={false}
+                style={{ radiusTopLeft: 4, radiusTopRight: 4 }}
+              />
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} xl={8}>
-          <Card title="分类情况分布" style={chartCardStyle}>
-            <Paragraph type="secondary">分类覆盖能直接反映模板目录建设的完整度，哪些大类沉淀了更多数据类型一目了然。</Paragraph>
-            <Rose
-              data={categoryDistributionData}
-              xField="type"
-              yField="value"
-              colorField="type"
-              radius={0.82}
-              legend={{ position: 'bottom' }}
-              color={['#1677ff', '#27d8ff', '#13c2c2', '#fa8c16', '#722ed1', '#eb2f96']}
-            />
-          </Card>
-        </Col>
-
-        <Col xs={24} xl={8}>
-          <Card title="分级情况分布" style={chartCardStyle}>
-            <Paragraph type="secondary">分级标签分布适合用来看高敏、敏感、内部级等占比是否合理，以及是否存在级别偏斜。</Paragraph>
-            <Pie
-              data={levelDistributionData}
-              angleField="value"
-              colorField="type"
-              radius={0.84}
-              legend={{ position: 'bottom' }}
-              label={{ text: 'type', style: { fontSize: 12 } }}
-              color={['#f5222d', '#fa8c16', '#fadb14', '#52c41a', '#13c2c2', '#1677ff']}
-            />
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.rootGroup}>一级分组资产覆盖</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Column
+                data={rootGroupCoverageData}
+                xField="group"
+                yField="value"
+                height={220}
+                colorField="metric"
+                isGroup
+                label={{ position: 'top', style: { fontSize: 10 } }}
+                color={['#4d8dff', '#13c2c2', '#fa8c16']}
+              />
+            </div>
           </Card>
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
-        <Col xs={24} xl={12}>
-          <Card title="模板覆盖强度" style={chartCardStyle}>
-            <Paragraph type="secondary">建议同时看模板下的分类节点数和数据类型数，用于衡量模板建设的深度与颗粒度。</Paragraph>
-            <Column
-              data={templateCoverageData}
-              xField="template"
-              yField="value"
-              colorField="metric"
-              isGroup
-              color={['#722ed1', '#4d8dff']}
-            />
+      {/* Chart Row 2 — 4 columns */}
+      <Row gutter={[24, 24]} className="chartRow">
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.category}>分类情况分布</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Rose
+                data={categoryDistributionData}
+                xField="type"
+                yField="value"
+                height={220}
+                colorField="type"
+                radius={0.82}
+                legend={{ position: 'bottom' }}
+                color={['#1677ff', '#27d8ff', '#13c2c2', '#fa8c16', '#722ed1', '#eb2f96']}
+              />
+            </div>
           </Card>
         </Col>
 
-        <Col xs={24} xl={12}>
-          <Card title="治理能力覆盖" style={chartCardStyle}>
-            <Paragraph type="secondary">从敏感字段、建议脱敏、建议加密和特征能力项四个方向看治理覆盖是否充足。</Paragraph>
-            <Bar
-              data={governanceCoverageData}
-              xField="item"
-              yField="value"
-              legend={false}
-              color="#59f0b0"
-            />
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.level}>分级情况分布</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Pie
+                data={levelDistributionData}
+                angleField="value"
+                colorField="type"
+                height={220}
+                radius={0.84}
+                legend={{ position: 'bottom' }}
+                label={{ text: 'type', style: { fontSize: 11 } }}
+                color={['#f5222d', '#fa8c16', '#fadb14', '#52c41a', '#13c2c2', '#1677ff']}
+              />
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.template}>模板覆盖强度</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Column
+                data={templateCoverageData}
+                xField="template"
+                yField="value"
+                height={220}
+                colorField="metric"
+                isGroup
+                color={['#722ed1', '#4d8dff']}
+              />
+            </div>
+          </Card>
+        </Col>
+
+        <Col xs={24} sm={12} xl={6}>
+          <Card className="chartCard" title={<Tooltip title={chartTips.governance}>治理能力覆盖</Tooltip>} bordered={false}>
+            <div className="chartWrap">
+              <Bar
+                data={governanceCoverageData}
+                xField="item"
+                yField="value"
+                height={220}
+                legend={false}
+                color="#59f0b0"
+              />
+            </div>
           </Card>
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
+      {/* Chart Row 3 — Full Width */}
+      <Row gutter={[24, 24]} className="chartRow">
         <Col xs={24}>
-          <Card title="分类分级任务来源与状态" style={chartCardStyle}>
-            <Paragraph type="secondary">
-              全局概览里非常值得持续展示这张图。它能帮助区分“任务中心”和“导入流程”两个入口的任务量差异，也能快速看出当前积压在哪种状态。
-            </Paragraph>
-            <Column
-              data={taskStatusBySourceData}
-              xField="status"
-              yField="value"
-              colorField="source"
-              isStack
-              color={(datum: { source: string }) => taskSourceColorMap[datum.source as keyof typeof taskSourceColorMap] || '#1677ff'}
-            />
+          <Card className="chartCard" title={<Tooltip title={chartTips.taskStatus}>分类分级任务来源与状态</Tooltip>} bordered={false}>
+            <div className="chartWrapWide">
+              <Column
+                data={taskStatusBySourceData}
+                xField="status"
+                yField="value"
+                height={200}
+                colorField="source"
+                isStack
+                color={(datum: { source: string }) => taskSourceColorMap[datum.source as keyof typeof taskSourceColorMap] || '#1677ff'}
+              />
+            </div>
           </Card>
         </Col>
       </Row>

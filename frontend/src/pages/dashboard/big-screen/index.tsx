@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import { Bar, Column, Line, Pie, Rose } from '@ant-design/plots';
 import { PageContainer } from '@ant-design/pro-components';
-import { Badge, Card, Col, Progress, Row, Space, Tag, Typography } from 'antd';
+import { Badge, Card, Col, Progress, Row, Tag, Typography } from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
 import { collectDataTypes } from '@/services/data-classification/templateStore';
 import { useDashboardData } from '../shared/useDashboardData';
@@ -48,7 +48,6 @@ const BigScreen: React.FC = () => {
     () => templates.flatMap((template) => template.categories.flatMap((category) => collectDataTypes(category))),
     [templates],
   );
-  const activeTemplateCount = templateSummaries.filter((template) => template.status === 'active').length;
 
   const summaryMetrics = [
     {
@@ -130,20 +129,16 @@ const BigScreen: React.FC = () => {
     return Array.from(statusCounter.entries()).map(([type, value]) => ({ type, value }));
   }, [classificationTasks]);
 
-  const governanceWaveData = useMemo(
-    () => ({
-      type: '全局治理完成度',
-      values: [
-        Math.min(
-          100,
-          Math.round(
-            (classificationTasks.filter((task) => task.status === 'completed').length /
-              Math.max(classificationTasks.length, 1)) *
-              100,
-          ) + 18,
-        ),
-      ],
-    }),
+  const governancePercent = useMemo(
+    () =>
+      Math.min(
+        100,
+        Math.round(
+          (classificationTasks.filter((task) => task.status === 'completed').length /
+            Math.max(classificationTasks.length, 1)) *
+            100,
+        ) + 18,
+      ),
     [classificationTasks],
   );
 
@@ -208,6 +203,7 @@ const BigScreen: React.FC = () => {
       ghost
     >
       <div className="bigScreen">
+        {/* Header */}
         <div className="header">
           <div className="titleBlock">
             <div className="eyebrow">
@@ -231,7 +227,8 @@ const BigScreen: React.FC = () => {
           </div>
         </div>
 
-        <Row gutter={[16, 16]}>
+        {/* Summary Metrics */}
+        <Row gutter={[24, 24]} className="summaryRow">
           {summaryMetrics.map((item) => (
             <Col xs={24} sm={12} xl={6} key={item.title}>
               <Card className="summaryCard" bordered={false}>
@@ -248,8 +245,9 @@ const BigScreen: React.FC = () => {
           ))}
         </Row>
 
+        {/* Chart Grid */}
         <div className="bottomGrid">
-          <Row gutter={[16, 16]}>
+          <Row gutter={[24, 24]}>
             <Col xs={24} xl={8}>
               <Card className="sectionCard" title="资产分组表量分布" bordered={false}>
                 <div className="chartWrap">
@@ -257,6 +255,7 @@ const BigScreen: React.FC = () => {
                     data={assetDistributionData}
                     angleField="value"
                     colorField="name"
+                    height={220}
                     radius={0.86}
                     innerRadius={0.54}
                     legend={{ position: 'bottom', itemLabelFill: '#c6d8ec' }}
@@ -275,6 +274,7 @@ const BigScreen: React.FC = () => {
                     data={groupFieldRankingData}
                     xField="name"
                     yField="value"
+                    height={220}
                     legend={false}
                     color="#27d8ff"
                     axis={{
@@ -294,6 +294,7 @@ const BigScreen: React.FC = () => {
                     data={assetTrendData}
                     xField="time"
                     yField="value"
+                    height={220}
                     color="#27d8ff"
                     style={{ lineWidth: 3 }}
                     point={{ size: 4, shape: 'circle', style: { fill: '#27d8ff', stroke: '#07121f', lineWidth: 2 } }}
@@ -307,7 +308,7 @@ const BigScreen: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
+          <Row gutter={[24, 24]} style={{ marginTop: 0 }}>
             <Col xs={24} xl={8}>
               <Card className="sectionCard" title="模板分类覆盖" bordered={false}>
                 <div className="chartWrap">
@@ -315,6 +316,7 @@ const BigScreen: React.FC = () => {
                     data={templateCoverageData}
                     xField="name"
                     yField="value"
+                    height={220}
                     color="#4d8dff"
                     legend={false}
                     axis={{
@@ -334,6 +336,7 @@ const BigScreen: React.FC = () => {
                     data={levelDistributionData}
                     xField="name"
                     yField="value"
+                    height={220}
                     colorField="name"
                     radius={0.82}
                     legend={{ position: 'bottom', itemLabelFill: '#c6d8ec' }}
@@ -350,6 +353,7 @@ const BigScreen: React.FC = () => {
                     data={classificationTaskStatusData}
                     angleField="value"
                     colorField="type"
+                    height={220}
                     radius={0.82}
                     legend={{ position: 'bottom', itemLabelFill: '#c6d8ec' }}
                     label={{ text: 'type', style: { fill: '#e9f6ff', fontSize: 12 } }}
@@ -360,12 +364,15 @@ const BigScreen: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={[16, 16]} style={{ marginTop: 0 }}>
+          <Row gutter={[24, 24]} style={{ marginTop: 0 }}>
             <Col xs={24} xl={10}>
               <Card className="sectionCard" title="治理风险雷达" bordered={false}>
                 <div className="eventList">
                   {highRiskItems.map((item) => (
-                    <div className="eventRow" key={item.title}>
+                    <div
+                      className={item.value > 0 ? 'riskEventRowAlert' : 'riskEventRow'}
+                      key={item.title}
+                    >
                       <div className="eventMain">
                         <Text className="eventTitle">{item.title}</Text>
                         <Tag className="screenTag" color={item.color}>
@@ -384,7 +391,7 @@ const BigScreen: React.FC = () => {
                     </div>
                   </div>
                   <Progress
-                    percent={governanceWaveData.values[0]}
+                    percent={governancePercent}
                     strokeColor={{ from: '#27d8ff', to: '#59f0b0' }}
                     trailColor="rgba(255,255,255,0.08)"
                   />

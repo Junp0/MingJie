@@ -4,7 +4,7 @@ import { formatBeijingDateTime } from "@/utils/datetime";
 
 export type ClassificationTaskDataType = "database" | "file" | "api";
 export type ClassificationType = "automatic" | "manual" | "hybrid";
-export type ClassificationTaskScheduleMode = "single";
+export type ClassificationTaskScheduleMode = "single" | "auto_after_import";
 export type ClassificationTaskStatus =
   | "waiting_import"
   | "pending"
@@ -92,8 +92,8 @@ const normalizeStringArray = (value: unknown): string[] => {
 const normalizeScheduleMode = (
   value?: string | null
 ): ClassificationTaskScheduleMode => {
-  if (value === "daily" || value === "weekly" || value === "monthly") {
-    return value;
+  if (value === "auto_after_import") {
+    return "auto_after_import";
   }
   return "single";
 };

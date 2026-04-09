@@ -5,11 +5,12 @@ import {
   SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { Badge, Card, Col, Progress, Row, Space, Table, Tag, Typography } from 'antd';
+import { Badge, Card, Col, Progress, Row, Table, Tag, Typography } from 'antd';
 import React from 'react';
 import { useDashboardData } from '../shared/useDashboardData';
+import './index.less';
 
-const { Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 const statusBadgeMap = {
   waiting_import: 'warning',
@@ -19,6 +20,15 @@ const statusBadgeMap = {
   failed: 'error',
   stopped: 'warning',
 } as const;
+
+const statusTextMap: Record<string, string> = {
+  waiting_import: '等待导入',
+  pending: '待执行',
+  running: '执行中',
+  completed: '已完成',
+  failed: '失败',
+  stopped: '已停止',
+};
 
 const Monitor: React.FC = () => {
   const {
@@ -33,6 +43,33 @@ const Monitor: React.FC = () => {
   const failedClassificationTasks = classificationTasks.filter((task) => task.status === 'failed');
   const archivedGroups = assetGroups.filter((group) => group.status === 'archived');
   const disabledFeatures = [...maskingFeatures, ...encryptionFeatures].filter((feature) => feature.status === 'inactive');
+
+  const kpiItems = [
+    {
+      label: '运行中的导入任务',
+      value: importTasks.filter((task) => task.status === 'running').length,
+      icon: <DatabaseOutlined style={{ fontSize: 64 }} />,
+      colorClass: 'kpiBlue',
+    },
+    {
+      label: '运行中的分类任务',
+      value: classificationTasks.filter((task) => task.status === 'running').length,
+      icon: <ClusterOutlined style={{ fontSize: 64 }} />,
+      colorClass: 'kpiPurple',
+    },
+    {
+      label: '待处理异常',
+      value: failedImports.length + failedClassificationTasks.length + archivedGroups.length,
+      icon: <AlertOutlined style={{ fontSize: 64 }} />,
+      colorClass: 'kpiOrange',
+    },
+    {
+      label: '治理特征总数',
+      value: maskingFeatures.length + encryptionFeatures.length,
+      icon: <SafetyCertificateOutlined style={{ fontSize: 64 }} />,
+      colorClass: 'kpiCyan',
+    },
+  ];
 
   const importColumns = [
     {
@@ -52,8 +89,11 @@ const Monitor: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (value: keyof typeof statusBadgeMap) => (
-        <Badge status={statusBadgeMap[value] as never} text={value} />
+      render: (value: string) => (
+        <Badge
+          status={statusBadgeMap[value as keyof typeof statusBadgeMap] as never}
+          text={statusTextMap[value] ?? value}
+        />
       ),
     },
     {
@@ -61,7 +101,13 @@ const Monitor: React.FC = () => {
       dataIndex: 'progress',
       key: 'progress',
       width: 180,
-      render: (value: number) => <Progress percent={value} size="small" />,
+      render: (value: number) => (
+        <Progress
+          percent={value}
+          size="small"
+          strokeColor={{ from: '#1677ff', to: '#13c2c2' }}
+        />
+      ),
     },
   ];
 
@@ -84,8 +130,11 @@ const Monitor: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (value: keyof typeof statusBadgeMap) => (
-        <Badge status={statusBadgeMap[value] as never} text={value} />
+      render: (value: string) => (
+        <Badge
+          status={statusBadgeMap[value as keyof typeof statusBadgeMap] as never}
+          text={statusTextMap[value] ?? value}
+        />
       ),
     },
     {
@@ -93,7 +142,13 @@ const Monitor: React.FC = () => {
       dataIndex: 'progress',
       key: 'progress',
       width: 180,
-      render: (value: number) => <Progress percent={value} size="small" />,
+      render: (value: number) => (
+        <Progress
+          percent={value}
+          size="small"
+          strokeColor={{ from: '#722ed1', to: '#eb2f96' }}
+        />
+      ),
     },
   ];
 
@@ -101,97 +156,58 @@ const Monitor: React.FC = () => {
     {
       title: '导入失败任务',
       count: failedImports.length,
-      description: failedImports.length ? `最近失败任务：${failedImports[0].sourceName}` : '当前无导入失败任务',
-      color: failedImports.length ? '#ff4d4f' : '#52c41a',
+      description: failedImports.length ? `最近：${failedImports[0].sourceName}` : '暂无异常',
+      severityClass: failedImports.length ? 'riskDanger' : 'riskOk',
+      countColor: failedImports.length ? '#ff4d4f' : '#52c41a',
     },
     {
       title: '分类失败任务',
       count: failedClassificationTasks.length,
-      description: failedClassificationTasks.length ? `最近失败任务：${failedClassificationTasks[0].taskName}` : '当前无分类失败任务',
-      color: failedClassificationTasks.length ? '#fa541c' : '#52c41a',
+      description: failedClassificationTasks.length ? `最近：${failedClassificationTasks[0].taskName}` : '暂无异常',
+      severityClass: failedClassificationTasks.length ? 'riskDanger' : 'riskOk',
+      countColor: failedClassificationTasks.length ? '#fa541c' : '#52c41a',
     },
     {
       title: '归档资产分组',
       count: archivedGroups.length,
-      description: archivedGroups.length ? `待复核分组：${archivedGroups[0].name}` : '当前无归档分组',
-      color: archivedGroups.length ? '#faad14' : '#52c41a',
+      description: archivedGroups.length ? `待复核：${archivedGroups[0].name}` : '暂无异常',
+      severityClass: archivedGroups.length ? 'riskWarning' : 'riskOk',
+      countColor: archivedGroups.length ? '#faad14' : '#52c41a',
     },
     {
       title: '停用治理特征',
       count: disabledFeatures.length,
-      description: disabledFeatures.length ? `最近停用：${disabledFeatures[0].featureName}` : '当前无停用特征',
-      color: disabledFeatures.length ? '#722ed1' : '#52c41a',
+      description: disabledFeatures.length ? `最近：${disabledFeatures[0].featureName}` : '暂无异常',
+      severityClass: disabledFeatures.length ? 'riskInfo' : 'riskOk',
+      countColor: disabledFeatures.length ? '#722ed1' : '#52c41a',
     },
   ];
 
   return (
     <PageContainer
       header={{
-        title: '平台监控页',
-        subTitle: '监控导入流程、分类分级任务与治理能力状态。',
+        title: '平台监控',
+        subTitle: '实时监控导入流程、分类分级任务与治理能力状态',
       }}
     >
-      <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>
-        <Col xs={24} md={6}>
-          <Card>
-            <Space>
-              <DatabaseOutlined style={{ color: '#1677ff' }} />
-              <div>
-                <div style={{ color: '#8c8c8c', fontSize: 12 }}>运行中的导入任务</div>
-                <div style={{ fontSize: 24, fontWeight: 600 }}>
-                  {importTasks.filter((task) => task.status === 'running').length}
-                </div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Space>
-              <ClusterOutlined style={{ color: '#722ed1' }} />
-              <div>
-                <div style={{ color: '#8c8c8c', fontSize: 12 }}>运行中的分类任务</div>
-                <div style={{ fontSize: 24, fontWeight: 600 }}>
-                  {classificationTasks.filter((task) => task.status === 'running').length}
-                </div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Space>
-              <AlertOutlined style={{ color: '#fa8c16' }} />
-              <div>
-                <div style={{ color: '#8c8c8c', fontSize: 12 }}>待处理异常</div>
-                <div style={{ fontSize: 24, fontWeight: 600 }}>
-                  {failedImports.length + failedClassificationTasks.length + archivedGroups.length}
-                </div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={6}>
-          <Card>
-            <Space>
-              <SafetyCertificateOutlined style={{ color: '#13c2c2' }} />
-              <div>
-                <div style={{ color: '#8c8c8c', fontSize: 12 }}>治理特征总数</div>
-                <div style={{ fontSize: 24, fontWeight: 600 }}>
-                  {maskingFeatures.length + encryptionFeatures.length}
-                </div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
+      {/* KPI Cards */}
+      <Row gutter={[24, 24]} style={{ marginBottom: 16 }} className="kpiRow">
+        {kpiItems.map((item) => (
+          <Col xs={24} sm={12} xl={6} key={item.label}>
+            <Card className={`kpiCard ${item.colorClass}`} bordered={false}>
+              <div className="kpiIconBg">{item.icon}</div>
+              <div className="kpiValue">{item.value}</div>
+              <div className="kpiLabel">{item.label}</div>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
-      <Row gutter={[16, 16]}>
+      {/* Monitoring Tables */}
+      <Row gutter={[24, 24]}>
         <Col xs={24} xl={12}>
-          <Card title="导入流程监控">
-            <Paragraph type="secondary">
-              重点关注导入任务的执行状态、同步策略和完成度，确保资产接入链路稳定运行。
-            </Paragraph>
+          <Card className="tableCard" title="导入流程监控" bordered={false}>
+            <div className="tableSubtext">重点关注导入任务的执行状态与完成进度</div>
             <Table
               rowKey="id"
               size="small"
@@ -203,10 +219,8 @@ const Monitor: React.FC = () => {
         </Col>
 
         <Col xs={24} xl={12}>
-          <Card title="分类分级任务监控">
-            <Paragraph type="secondary">
-              统一观察任务中心与导入流程创建的分类分级任务执行状态，确保分析链路连贯。
-            </Paragraph>
+          <Card className="tableCard" title="分类分级任务监控" bordered={false}>
+            <div className="tableSubtext">统一观察任务中心与导入流程创建的分类任务</div>
             <Table
               rowKey="id"
               size="small"
@@ -218,23 +232,18 @@ const Monitor: React.FC = () => {
         </Col>
       </Row>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 8 }}>
+      {/* Risk Cards */}
+      <Row gutter={[24, 24]} style={{ marginTop: 16 }} className="riskRow">
         {riskItems.map((item) => (
-          <Col xs={24} md={12} xl={6} key={item.title}>
-            <Card>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                  marginBottom: 8,
-                }}
-              >
-                <Text strong>{item.title}</Text>
-                <Tag color={item.color}>{item.count}</Tag>
+          <Col xs={24} sm={12} xl={6} key={item.title}>
+            <Card className={`riskCard ${item.severityClass}`} bordered={false}>
+              <div className="riskHead">
+                <span className="riskTitle">{item.title}</span>
+                <span className="riskCount" style={{ background: item.countColor, color: '#fff' }}>
+                  {item.count}
+                </span>
               </div>
-              <Text type="secondary">{item.description}</Text>
+              <div className="riskDesc">{item.description}</div>
             </Card>
           </Col>
         ))}

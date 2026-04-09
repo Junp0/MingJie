@@ -1,0 +1,82 @@
+@import '../shared/dashboard.less';
+
+/* Monitor page KPI cards */
+.kpiRow > :global(.ant-col) {
+  animation: fadeInUp 0.45s ease-out both;
+}
+
+.kpiRow > :global(.ant-col:nth-child(1)) { animation-delay: 0s; }
+.kpiRow > :global(.ant-col:nth-child(2)) { animation-delay: 0.08s; }
+.kpiRow > :global(.ant-col:nth-child(3)) { animation-delay: 0.16s; }
+.kpiRow > :global(.ant-col:nth-child(4)) { animation-delay: 0.24s; }
+
+.kpiBlue::before { background: linear-gradient(90deg, #1677ff, #4d8dff); }
+.kpiPurple::before { background: linear-gradient(90deg, #722ed1, #9254de); }
+.kpiOrange::before { background: linear-gradient(90deg, #fa8c16, #ffa940); }
+.kpiCyan::before { background: linear-gradient(90deg, #13c2c2, #36cfc9); }
+
+/* Table cards */
+.tableCard {
+  border-radius: 12px;
+  height: 100%;
+  animation: fadeInUp 0.5s ease-out 0.3s both;
+}
+
+.tableCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 52px;
+  padding: 0 20px;
+}
+
+.tableCard :global(.ant-card-head-title) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tableCard :global(.ant-card-body) {
+  padding: 12px 20px 20px;
+}
+
+.tableCard :global(.ant-table-thead > tr > th) {
+  background: #fafafa;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.tableCard :global(.ant-table-tbody > tr > td) {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.tableSubtext {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* Risk row */
+.riskRow > :global(.ant-col) {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.riskRow > :global(.ant-col:nth-child(1)) { animation-delay: 0.35s; }
+.riskRow > :global(.ant-col:nth-child(2)) { animation-delay: 0.42s; }
+.riskRow > :global(.ant-col:nth-child(3)) { animation-delay: 0.49s; }
+.riskRow > :global(.ant-col:nth-child(4)) { animation-delay: 0.56s; }
+
+/* Risk severity colors */
+.riskDanger::before { background: #ff4d4f; }
+.riskDanger { background: #fff2f0; }
+.riskDanger :global(.ant-card-body) { background: #fff2f0; border-radius: 12px; }
+
+.riskWarning::before { background: #faad14; }
+.riskWarning { background: #fffbe6; }
+.riskWarning :global(.ant-card-body) { background: #fffbe6; border-radius: 12px; }
+
+.riskInfo::before { background: #722ed1; }
+.riskInfo { background: #f9f0ff; }
+.riskInfo :global(.ant-card-body) { background: #f9f0ff; border-radius: 12px; }
+
+.riskOk::before { background: #52c41a; }
+.riskOk { background: #f6ffed; }
+.riskOk :global(.ant-card-body) { background: #f6ffed; border-radius: 12px; }

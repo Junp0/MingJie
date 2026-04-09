@@ -78,6 +78,8 @@ export class ClassificationTasksService {
     _scheduleMode?: string | null,
     executeAt?: Date | null,
   ) {
+    // Only 'single' and 'auto_after_import' modes are supported.
+    // 'auto_after_import' tasks are triggered by import completion, not by executeAt.
     return executeAt ?? null;
   }
 

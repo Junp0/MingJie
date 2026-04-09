@@ -630,7 +630,7 @@ export class ClassificationTemplatesService {
   }
 
   private async createLinkedTask(templateId: string, templateName: string) {
-    const taskName = `${templateName}——单次执行——分类分级任务`;
+    const taskName = `${templateName}——导入完成后自动执行——分类分级任务`;
     // Check if a linked task already exists
     const existing = await this.prisma.classificationTask.findFirst({
       where: { templateId },
@@ -644,7 +644,7 @@ export class ClassificationTemplatesService {
       dataType: 'database',
       classificationType: 'automatic',
       templateId,
-      scheduleMode: 'single',
+      scheduleMode: 'auto_after_import',
       source: ClassificationTaskSource.CLASSIFICATION_CENTER,
       status: ClassificationTaskStatus.PENDING,
     });

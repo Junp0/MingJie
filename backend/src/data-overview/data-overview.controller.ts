@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { DataOverviewService } from './data-overview.service';
 
@@ -8,17 +8,17 @@ export class DataOverviewController {
   constructor(private readonly dataOverviewService: DataOverviewService) {}
 
   @Get('full-data-list')
-  listFullData() {
-    return this.dataOverviewService.listFullData();
+  listFullData(@Query('templateId') templateId?: string) {
+    return this.dataOverviewService.listFullData(templateId);
   }
 
   @Get('missed-data-list')
-  listMissedData() {
-    return this.dataOverviewService.listMissedData();
+  listMissedData(@Query('templateId') templateId?: string) {
+    return this.dataOverviewService.listMissedData(templateId);
   }
 
   @Get('table-data-list')
-  listTableData() {
-    return this.dataOverviewService.listTableData();
+  listTableData(@Query('templateId') templateId?: string) {
+    return this.dataOverviewService.listTableData(templateId);
   }
 }

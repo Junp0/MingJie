@@ -1,0 +1,93 @@
+@import '../shared/dashboard.less';
+
+.analysisPage {
+  :global(.ant-page-header) {
+    padding-bottom: 8px;
+  }
+}
+
+/* Summary row entrance animation */
+.summaryRow > :global(.ant-col) {
+  animation: fadeInUp 0.45s ease-out both;
+}
+
+.summaryRow > :global(.ant-col:nth-child(1)) { animation-delay: 0s; }
+.summaryRow > :global(.ant-col:nth-child(2)) { animation-delay: 0.08s; }
+.summaryRow > :global(.ant-col:nth-child(3)) { animation-delay: 0.16s; }
+.summaryRow > :global(.ant-col:nth-child(4)) { animation-delay: 0.24s; }
+
+/* Stat card color variants */
+.statCardBlue::before { background: linear-gradient(180deg, #1677ff, #4d8dff); }
+.statCardBlue .statIconWrap { background: rgba(22, 119, 255, 0.08); color: #1677ff; }
+
+.statCardCyan::before { background: linear-gradient(180deg, #13c2c2, #36cfc9); }
+.statCardCyan .statIconWrap { background: rgba(19, 194, 194, 0.08); color: #13c2c2; }
+
+.statCardPurple::before { background: linear-gradient(180deg, #722ed1, #9254de); }
+.statCardPurple .statIconWrap { background: rgba(114, 46, 209, 0.08); color: #722ed1; }
+
+.statCardOrange::before { background: linear-gradient(180deg, #fa8c16, #ffa940); }
+.statCardOrange .statIconWrap { background: rgba(250, 140, 22, 0.08); color: #fa8c16; }
+
+/* Chart rows entrance */
+.chartRow > :global(.ant-col) {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.chartRow > :global(.ant-col:nth-child(1)) { animation-delay: 0.1s; }
+.chartRow > :global(.ant-col:nth-child(2)) { animation-delay: 0.16s; }
+.chartRow > :global(.ant-col:nth-child(3)) { animation-delay: 0.22s; }
+.chartRow > :global(.ant-col:nth-child(4)) { animation-delay: 0.28s; }
+
+/* Governance progress section */
+.governanceBanner {
+  padding: 20px 24px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f0f5ff 0%, #e6fffb 100%);
+  border: 1px solid #d6e4ff;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+.governanceBannerLeft {
+  flex: 1;
+}
+
+.governanceBannerTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  margin-bottom: 4px;
+}
+
+.governanceBannerSub {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.governanceProgressWrap {
+  width: 320px;
+  flex-shrink: 0;
+}
+
+/* Compact chart wrapper */
+.chartWrap {
+  height: 220px;
+}
+
+/* Full-width chart row gets slightly taller */
+.chartWrapWide {
+  height: 200px;
+}
+
+/* Loading */
+.loadingWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}

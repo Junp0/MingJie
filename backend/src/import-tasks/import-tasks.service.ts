@@ -1001,6 +1001,8 @@ export class ImportTasksService {
     }
 
     try {
+      // Wait 10 seconds after import completion to ensure audit log ordering
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
       await this.classificationTasksService.executeNow(task.classificationTaskId);
       await this.prisma.importTask.update({
         where: { id: task.id },

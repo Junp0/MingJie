@@ -57,12 +57,39 @@
   }
 }
 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 109, 120, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 12px 4px rgba(255, 109, 120, 0.2);
+  }
+}
+
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+/* ---------- Header ---------- */
 .header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  animation: fadeInUp 0.5s ease-out both;
 }
 
 .titleBlock {
@@ -125,6 +152,7 @@
   margin-top: 8px;
 }
 
+/* ---------- Summary Metric Cards ---------- */
 .summaryCard {
   height: 100%;
   background: linear-gradient(180deg, rgba(10, 32, 54, 0.88), rgba(8, 24, 42, 0.88));
@@ -132,10 +160,30 @@
   border-radius: 18px;
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.summaryCard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
 
 .summaryCard :global(.ant-card-body) {
   padding: 18px 18px 16px;
+}
+
+/* Bottom gradient glow line */
+.summaryCard::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--screen-cyan), transparent);
+  opacity: 0.5;
 }
 
 .summaryHead {
@@ -157,6 +205,7 @@
   font-weight: 700;
   line-height: 1;
   margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .summaryMeta {
@@ -176,6 +225,16 @@
   color: #05131f;
 }
 
+/* Staggered entrance */
+.summaryRow > :global(.ant-col) {
+  animation: fadeInUp 0.5s ease-out both;
+}
+.summaryRow > :global(.ant-col:nth-child(1)) { animation-delay: 0.1s; }
+.summaryRow > :global(.ant-col:nth-child(2)) { animation-delay: 0.18s; }
+.summaryRow > :global(.ant-col:nth-child(3)) { animation-delay: 0.26s; }
+.summaryRow > :global(.ant-col:nth-child(4)) { animation-delay: 0.34s; }
+
+/* ---------- Section Cards (Charts) ---------- */
 .sectionCard {
   height: 100%;
   border: 1px solid var(--screen-border);
@@ -183,12 +242,31 @@
   background:
     linear-gradient(180deg, rgba(13, 30, 50, 0.95), rgba(7, 18, 31, 0.94));
   box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.sectionCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 40px rgba(0, 0, 0, 0.28);
 }
 
 .sectionCard :global(.ant-card-head) {
   border-bottom: 1px solid rgba(90, 180, 255, 0.12);
   padding: 0 18px;
   min-height: 56px;
+  position: relative;
+}
+
+/* Colored accent bar on card title */
+.sectionCard :global(.ant-card-head)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--screen-cyan), var(--screen-blue));
 }
 
 .sectionCard :global(.ant-card-head-title) {
@@ -223,6 +301,7 @@
   box-shadow: 0 0 16px currentColor;
 }
 
+/* ---------- Event List ---------- */
 .eventList {
   display: grid;
   gap: 10px;
@@ -233,6 +312,27 @@
   border-radius: 14px;
   border: 1px solid rgba(90, 180, 255, 0.12);
   background: rgba(8, 24, 42, 0.82);
+  position: relative;
+  padding-left: 24px;
+  transition: background 0.2s ease;
+}
+
+.eventRow:hover {
+  background: rgba(12, 32, 54, 0.92);
+}
+
+/* Timeline dot */
+.eventRow::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--screen-cyan);
+  box-shadow: 0 0 8px var(--screen-cyan);
 }
 
 .eventMain {
@@ -255,12 +355,32 @@
   font-size: 12px;
 }
 
+/* ---------- Risk Items ---------- */
+.riskEventRow {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(90, 180, 255, 0.12);
+  background: rgba(8, 24, 42, 0.82);
+  transition: background 0.2s ease;
+}
+
+.riskEventRow:hover {
+  background: rgba(12, 32, 54, 0.92);
+}
+
+.riskEventRowAlert {
+  composes: riskEventRow;
+  border-color: rgba(255, 109, 120, 0.3);
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+/* ---------- Bottom Grid ---------- */
 .bottomGrid {
   margin-top: 16px;
 }
 
 .chartWrap {
-  min-height: 260px;
+  height: 220px;
 }
 
 .screenTag {
@@ -268,6 +388,7 @@
   padding-inline: 10px;
 }
 
+/* ---------- Responsive ---------- */
 @media (max-width: 1200px) {
   .header {
     flex-direction: column;

@@ -159,6 +159,7 @@ const CLASSIFICATION_SCHEDULE_MODE_OPTIONS: Array<{
   value: ClassificationTaskScheduleMode;
   label: string;
 }> = [
+  { value: "auto_after_import", label: "导入完成后自动执行" },
   { value: "single", label: "单次执行" },
 ];
 
@@ -628,8 +629,7 @@ const DataImportForm: React.FC = () => {
               classificationType: "automatic",
               templateId: values.classificationTemplateId,
               templateName: selectedTemplate?.label,
-              scheduleMode: "single",
-              executeAt: undefined,
+              scheduleMode: "auto_after_import",
             },
             {
               taskSource: "asset-import",

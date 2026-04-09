@@ -1,0 +1,244 @@
+/* ===== Shared Dashboard Styles ===== */
+
+/* ---------- Card hover effects ---------- */
+.dashCardHover {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dashCardHover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------- Summary stat card ---------- */
+.statCard {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 100%;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.statCard:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.statCard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+
+.statCard :global(.ant-card-body) {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 20px;
+}
+
+.statIconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.statValue {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.statSuffix {
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.45);
+  margin-left: 4px;
+}
+
+.statExtra {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+  margin-top: 2px;
+}
+
+.statTitle {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+  margin-bottom: 4px;
+}
+
+/* ---------- Chart card ---------- */
+.chartCard {
+  border-radius: 12px;
+  height: 100%;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.chartCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.chartCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 0 20px;
+  min-height: 52px;
+}
+
+.chartCard :global(.ant-card-head-title) {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.chartCard :global(.ant-card-body) {
+  padding: 12px 16px 14px;
+}
+
+/* ---------- KPI card with colored top border ---------- */
+.kpiCard {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 100%;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.kpiCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.kpiCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.kpiCard :global(.ant-card-body) {
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.kpiIconBg {
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 64px;
+  opacity: 0.06;
+  pointer-events: none;
+}
+
+.kpiValue {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.kpiLabel {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.65);
+  margin-top: 8px;
+}
+
+/* ---------- Risk card with left color bar ---------- */
+.riskCard {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  height: 100%;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.riskCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.riskCard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+}
+
+.riskCard :global(.ant-card-body) {
+  padding: 16px 18px;
+}
+
+.riskHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.riskTitle {
+  font-weight: 600;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.riskCount {
+  min-width: 32px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 10px;
+}
+
+.riskDesc {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* ---------- Animation keyframes ---------- */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.fadeInUp {
+  animation: fadeInUp 0.5s ease-out both;
+}
+
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}

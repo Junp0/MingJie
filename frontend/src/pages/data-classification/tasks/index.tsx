@@ -48,17 +48,13 @@ const DATA_TYPE_OPTIONS = [
 ] as const;
 
 const SCHEDULE_MODE_OPTIONS = [
+  { value: "auto_after_import", label: "导入完成后自动执行" },
   { value: "single", label: "单次执行" },
-  { value: "daily", label: "每日" },
-  { value: "weekly", label: "每周" },
-  { value: "monthly", label: "每月" },
 ] as const;
 
 const SCHEDULE_MODE_LABEL_MAP: Record<ClassificationTaskScheduleMode, string> = {
+  auto_after_import: "导入完成后自动执行",
   single: "单次执行",
-  daily: "每日",
-  weekly: "每周",
-  monthly: "每月",
 };
 
 const STATUS_TEXT_MAP: Record<ClassificationTaskRecord["status"], string> = {
@@ -100,6 +96,7 @@ const ClassificationTasks: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const [form] = Form.useForm<TaskModalFormValues>();
+  const scheduleMode = Form.useWatch("scheduleMode", form);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<TaskModalMode>("create");
   const [submitting, setSubmitting] = useState(false);
@@ -158,7 +155,7 @@ const ClassificationTasks: React.FC = () => {
     form.setFieldsValue({
       taskName: "",
       dataType: "database",
-      scheduleMode: "single",
+      scheduleMode: "auto_after_import",
       dataAssetIds: [],
       templateId: undefined,
       executeAt: undefined,
@@ -263,10 +260,8 @@ const ClassificationTasks: React.FC = () => {
       valueType: "select",
       align: "center",
       valueEnum: {
+        auto_after_import: { text: "导入完成后自动执行" },
         single: { text: "单次执行" },
-        daily: { text: "每日" },
-        weekly: { text: "每周" },
-        monthly: { text: "每月" },
       },
       render: (_, record) => SCHEDULE_MODE_LABEL_MAP[record.scheduleMode],
     },
@@ -495,6 +490,7 @@ const ClassificationTasks: React.FC = () => {
               options={templateOptions}
             />
           </Form.Item>
+          {scheduleMode === "single" && (
           <Form.Item
             label="任务执行时间"
             name="executeAt"
@@ -507,6 +503,7 @@ const ClassificationTasks: React.FC = () => {
               placeholder="请选择任务执行时间"
             />
           </Form.Item>
+          )}
         </Form>
       </Modal>
 
