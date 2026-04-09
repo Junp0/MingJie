@@ -21,12 +21,18 @@ export class DiscoverImportDatabasesDto {
   @IsString()
   sourceUsername!: string;
 
-  @ApiProperty({ example: 'importer123' })
+  @ApiProperty({ example: 'importer123', required: false })
+  @IsOptional()
   @IsString()
-  sourcePassword!: string;
+  sourcePassword?: string;
 
   @ApiProperty({ example: 'mysql', required: false })
   @IsOptional()
   @IsString()
   databaseType?: string;
+
+  @ApiProperty({ example: 'cm123', required: false })
+  @IsOptional()
+  @IsString()
+  taskId?: string;
 }

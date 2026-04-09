@@ -782,7 +782,7 @@ export class DataOverviewService {
     });
   }
 
-  async listFullData() {
+  async listFullData(_templateId?: string) {
     const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
       this.getOverviewReferenceData(),
       this.getActiveProtectionFeatures(),
@@ -867,7 +867,7 @@ export class DataOverviewService {
     return this.buildFullDataRecords(referenceData);
   }
 
-  async listMissedData() {
+  async listMissedData(_templateId?: string) {
     const [referenceData, protectionFeatures, importedAssets, overviewContext] =
       await Promise.all([
         this.getOverviewReferenceData(),
@@ -1038,7 +1038,7 @@ export class DataOverviewService {
       });
   }
 
-  async listTableData() {
+  async listTableData(_templateId?: string) {
     const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
       this.getOverviewReferenceData(),
       this.getActiveProtectionFeatures(),

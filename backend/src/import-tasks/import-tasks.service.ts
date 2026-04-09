@@ -112,6 +112,10 @@ export class ImportTasksService {
     return value === 'incremental' ? 'incremental' : 'replace';
   }
 
+  private isMaskedPassword(value?: string | null) {
+    return (value?.trim() ?? '') === '***';
+  }
+
   private calculateNextExecuteAt(
     scheduleMode?: string | null,
     executeAt?: Date | null,
@@ -155,7 +159,7 @@ export class ImportTasksService {
     }
     if (dto.sourceUsername !== undefined)
       data.sourceUsername = dto.sourceUsername;
-    if (dto.sourcePassword !== undefined)
+    if (dto.sourcePassword !== undefined && !this.isMaskedPassword(dto.sourcePassword))
       data.sourcePassword = dto.sourcePassword;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.progress !== undefined) data.progress = dto.progress;
@@ -561,9 +565,36 @@ export class ImportTasksService {
       );
     }
 
+    const fallbackTask =
+      dto.taskId && (!dto.sourcePassword || this.isMaskedPassword(dto.sourcePassword))
+        ? await this.prisma.importTask.findUnique({
+            where: { id: dto.taskId },
+            select: {
+              sourceUsername: true,
+              sourcePassword: true,
+            },
+          })
+        : null;
+
+    const sourceUsername =
+      dto.sourceUsername?.trim() || fallbackTask?.sourceUsername || undefined;
+    const sourcePassword =
+      dto.sourcePassword && !this.isMaskedPassword(dto.sourcePassword)
+        ? dto.sourcePassword
+        : fallbackTask?.sourcePassword || undefined;
+
+    if (!sourceUsername || !sourcePassword) {
+      throw new BadRequestException('请输入访问账号和访问密码后再测试连通性。');
+    }
+
     let connection: mysql.Connection | null = null;
     try {
-      connection = await this.openMySqlConnection(dto);
+      connection = await this.openMySqlConnection({
+        ipAddress: dto.ipAddress,
+        port: dto.port,
+        sourceUsername,
+        sourcePassword,
+      });
       const [rows] = await connection.query(
         `
           SELECT SCHEMA_NAME
@@ -1238,9 +1269,22 @@ export class ImportTasksService {
       return this.sanitizeTask(task);
     }
 
-    return this.sanitizeTask(
-      (await this.executeImportTask(task.id)) ?? task,
-    );
+    void this.executeImportTask(task.id).catch(async (error) => {
+      console.error('Failed to execute import task asynchronously', error);
+      await this.prisma.importTask
+        .update({
+          where: { id: task.id },
+          data: {
+            status: ImportTaskStatus.FAILED,
+            progress: 0,
+            errorMessage:
+              error instanceof Error ? error.message : '导入任务执行失败',
+          },
+        })
+        .catch(() => undefined);
+    });
+
+    return this.sanitizeTask(task);
   }
 
   async update(id: string, dto: UpdateImportTaskDto) {

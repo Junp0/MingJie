@@ -101,7 +101,8 @@ export interface DiscoverImportDatabasesValues {
   ipAddress: string;
   port: number;
   username: string;
-  password: string;
+  password?: string;
+  taskId?: string;
 }
 
 type BackendImportTask = {
@@ -361,7 +362,8 @@ export const discoverImportDatabases = async (
         ipAddress: values.ipAddress.trim(),
         port: values.port,
         sourceUsername: values.username.trim(),
-        sourcePassword: values.password,
+        ...(values.password ? { sourcePassword: values.password } : {}),
+        ...(values.taskId ? { taskId: values.taskId } : {}),
       },
     }
   );
@@ -421,7 +423,9 @@ export const updateImportTask = async (
       databaseName: databaseNames[0],
       databaseNames,
       sourceUsername: values.username.trim(),
-      sourcePassword: values.password,
+      ...(values.password.trim() && values.password.trim() !== "***"
+        ? { sourcePassword: values.password }
+        : {}),
       assetGroupId: values.assetGroupId,
       scheduleMode,
       executeAt: values.scheduleMode === "immediate" ? null : (values.executeAt ?? null),
