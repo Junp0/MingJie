@@ -424,7 +424,11 @@ const DataImportForm: React.FC = () => {
           databaseName: dbNames,
           assetGroupId: task.assetGroupId,
           scheduleMode: task.scheduleMode,
-          executeAt: task.executeAt ? dayjs(task.executeAt) : undefined,
+          executeAt: task.executeAt
+            ? dayjs(task.executeAt)
+            : task.scheduleMode === "single"
+            ? dayjs(task.createTime)
+            : undefined,
           sampleCount: 20,
           sampleStrategy: "random",
           sampleStorageMode: "incremental",
@@ -1162,7 +1166,7 @@ const DataImportForm: React.FC = () => {
                 />
               </Form.Item>
 
-              {scheduleMode !== "immediate" && (
+              {!isEditMode && scheduleMode !== "immediate" && (
                 <>
                   <Form.Item
                     name="runImportImmediately"
