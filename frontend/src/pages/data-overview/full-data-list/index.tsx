@@ -32,7 +32,7 @@ const FullDataList: React.FC = () => {
   const columns: ProColumns<FullDataItem>[] = createFieldDisplayColumns(showSampleData);
 
   return (
-    <PageContainer>
+    <PageContainer className="nothingPage" title="Full Data List" subTitle="查看完整字段清单，并检索分类、分级、脱敏和加密状态。">
       {contextHolder}
       <ProTable<FullDataItem>
         actionRef={actionRef}

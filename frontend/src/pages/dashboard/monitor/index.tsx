@@ -183,11 +183,16 @@ const Monitor: React.FC = () => {
     },
   ];
 
+  const activeSignals =
+    importTasks.filter((task) => task.status === 'running').length +
+    classificationTasks.filter((task) => task.status === 'running').length;
+
   return (
     <PageContainer
+      className="monitorPage"
       header={{
-        title: '平台监控',
-        subTitle: '实时监控导入流程、分类分级任务与治理能力状态',
+        title: 'Operations Monitor',
+        subTitle: '集中监控运行任务、失败流程、归档分组与停用治理特征。',
       }}
     >
       {/* KPI Cards */}

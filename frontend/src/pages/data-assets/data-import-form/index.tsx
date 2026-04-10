@@ -53,6 +53,7 @@ import {
 } from "antd";
 import dayjs from "dayjs";
 import React, { useEffect, useMemo, useState } from "react";
+import "./index.less";
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -171,6 +172,19 @@ const mapTaskDataTypeToLabel = (value?: ClassificationTaskDataType) => {
   return "-";
 };
 
+const findTreeNodeTitle = (
+  nodes: Array<{ value: string; title: string; children: any[] }>,
+  targetValue?: string
+): string | undefined => {
+  if (!targetValue) return undefined;
+  for (const node of nodes) {
+    if (node.value === targetValue) return node.title;
+    const found = findTreeNodeTitle(node.children ?? [], targetValue);
+    if (found) return found;
+  }
+  return undefined;
+};
+
 const DataImportForm: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -216,6 +230,7 @@ const DataImportForm: React.FC = () => {
   const portValue = Form.useWatch("port", form);
   const usernameValue = Form.useWatch("username", form);
   const passwordValue = Form.useWatch("password", form);
+  const assetGroupIdValue = Form.useWatch("assetGroupId", form);
 
   const selectedExistingTask = useMemo(
     () =>
@@ -229,6 +244,7 @@ const DataImportForm: React.FC = () => {
     () => templateOptions[0],
     [templateOptions]
   );
+  const selectedDatabaseNames = Form.useWatch("databaseName", form);
 
   const discoveryPreset = useMemo(() => {
     const params = new URLSearchParams(location.search);
@@ -271,6 +287,41 @@ const DataImportForm: React.FC = () => {
     }
     return baseOptions;
   }, [discoveryPreset.databaseType, discoveryPreset.port, sourceType]);
+
+  const databaseDisplay = useMemo(() => {
+    if (Array.isArray(selectedDatabaseNames)) {
+      return selectedDatabaseNames.join("、") || "-";
+    }
+    return selectedDatabaseNames || "-";
+  }, [selectedDatabaseNames]);
+
+  const assetGroupDisplay = useMemo(
+    () => findTreeNodeTitle(assetGroupOptions, assetGroupIdValue) ?? "-",
+    [assetGroupIdValue, assetGroupOptions]
+  );
+
+  const summaryStrategyLabel = useMemo(() => {
+    if (scheduleMode === "immediate") {
+      return "任务创建后立即导入";
+    }
+    const label =
+      SCHEDULE_MODE_OPTIONS.find((option) => option.value === scheduleMode)
+        ?.label ?? "-";
+    const timeVal = form.getFieldValue("executeAt");
+    const timeStr = timeVal ? dayjs(timeVal).format("YYYY-MM-DD HH:mm") : "-";
+    return `${label} / ${
+      scheduleMode === "single" ? "执行时间" : "首次执行时间"
+    }：${timeStr}`;
+  }, [form, scheduleMode]);
+
+  const heroSignalLabel =
+    connectionTestStatus === "success"
+      ? "CONNECTED"
+      : connectionTestStatus === "error"
+      ? "ERROR"
+      : connectionTestStatus === "testing"
+      ? "TESTING"
+      : "STANDBY";
 
   useEffect(() => {
     let cancelled = false;
@@ -881,18 +932,25 @@ const DataImportForm: React.FC = () => {
 
   return (
     <PageContainer
-      title={isEditMode ? "编辑数据资产导入任务" : "新增数据资产导入任务"}
+      className="dataImportPage"
+      title={isEditMode ? "Edit Import Task" : "Create Import Task"}
+      subTitle={
+        isEditMode
+          ? "修改当前导入任务的连接配置、执行计划和关联分类任务。"
+          : "创建新的数据导入任务，验证连接并定义后续分类分级关联方式。"
+      }
       onBack={() => navigate(isEditMode && editId ? `/data-assets/import-detail/${editId}` : backPath)}
     >
       {contextHolder}
 
       <Spin spinning={loading}>
-      <div style={{ maxWidth: 1040, margin: "0 auto" }}>
-        <Card style={{ marginBottom: 24 }}>
+      <div className="dataImportShell">
+        <Card className="workflowStepsCard">
           <Steps current={currentStep} items={steps} />
         </Card>
 
         <Form<ImportWorkflowFormValues>
+          className="importWorkflowForm"
           form={form}
           layout="vertical"
           initialValues={{
@@ -911,7 +969,7 @@ const DataImportForm: React.FC = () => {
           }}
         >
           <div style={{ display: currentStep === 0 ? "block" : "none" }}>
-            <Card title="第一步：定义数据资产属性">
+            <Card title="第一步：定义数据资产属性" className="workflowSectionCard">
               {discoveryPreset.from === "asset-discovery" ? (
                 <Alert
                   type="info"
@@ -1187,7 +1245,7 @@ const DataImportForm: React.FC = () => {
 
           <div style={{ display: currentStep === 1 ? "block" : "none" }}>
             <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <Card title="第二步：设计数据分类分级任务">
+              <Card title="第二步：设计数据分类分级任务" className="workflowSectionCard">
                 <Row gutter={[16, 16]} align="middle">
                   <Col span={18}>
                     <Space direction="vertical" size={4}>
@@ -1215,6 +1273,7 @@ const DataImportForm: React.FC = () => {
 
               <Card
                 title="导入资产摘要"
+                className="workflowSectionCard importSummaryCard"
                 extra={
                   <Tag icon={<CheckCircleOutlined />} color="blue">
                     将始终创建导入任务
@@ -1230,9 +1289,7 @@ const DataImportForm: React.FC = () => {
                     <Text type="secondary">数据库名：</Text>
                     <Text>
                       {(() => {
-                        const v = form.getFieldValue("databaseName");
-                        if (Array.isArray(v)) return v.join("、") || "-";
-                        return v || "-";
+                        return databaseDisplay;
                       })()}
                     </Text>
                   </Col>
@@ -1244,39 +1301,19 @@ const DataImportForm: React.FC = () => {
                     <Text type="secondary">资产分组：</Text>
                     <Text>
                       {(() => {
-                        const groupId = form.getFieldValue("assetGroupId");
-                        const findTitle = (nodes: any[]): string | undefined => {
-                          for (const n of nodes) {
-                            if (n.value === groupId) return n.title;
-                            const found = findTitle(n.children ?? []);
-                            if (found) return found;
-                          }
-                          return undefined;
-                        };
-                        return findTitle(assetGroupOptions) || "-";
+                        return assetGroupDisplay;
                       })()}
                     </Text>
                   </Col>
                   <Col xs={24} md={12}>
                     <Text type="secondary">同步策略：</Text>
-                    <Text>
-                      {scheduleMode === "immediate"
-                        ? "任务创建后立即导入"
-                        : (() => {
-                            const label = scheduleMode === "single" ? "执行时间" : "首次执行时间";
-                            const timeVal = form.getFieldValue("executeAt");
-                            const timeStr = timeVal
-                              ? dayjs(timeVal).format("YYYY-MM-DD HH:mm")
-                              : "-";
-                            return `${SCHEDULE_MODE_OPTIONS.find((o) => o.value === scheduleMode)?.label ?? "-"} / ${label}：${timeStr}`;
-                          })()}
-                    </Text>
+                    <Text>{summaryStrategyLabel}</Text>
                   </Col>
                 </Row>
               </Card>
 
               {createClassificationTaskSwitch ? (
-                <Card title="分类分级任务参数">
+                <Card title="分类分级任务参数" className="workflowSectionCard">
                   <Alert
                     type="info"
                     showIcon
@@ -1340,6 +1377,7 @@ const DataImportForm: React.FC = () => {
                       {selectedExistingTask ? (
                         <Card
                           size="small"
+                          className="workflowNestedCard"
                           title="已有任务信息"
                           extra={
                             <Tag color="blue">提交后将追加本次导入资产</Tag>
@@ -1462,7 +1500,7 @@ const DataImportForm: React.FC = () => {
           </div>
         </Form>
 
-        <div style={{ textAlign: "center", marginTop: 24 }}>
+        <div className="importActionBar">
           <Space size="large">
             {currentStep > 0 ? (
               <Button onClick={() => setCurrentStep(0)}>上一步</Button>

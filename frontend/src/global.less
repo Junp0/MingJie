@@ -1,42 +1,27 @@
-@font-face {
-  font-family: "AlibabaSans";
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*1GSgSYDD_aIAAAAAQsAAAAgAegCCAQ/AlibabaSans-Light.woff2")
-    format("woff2");
-}
-@font-face {
-  font-family: "AlibabaSans";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*2zEUQqnPNesAAAAAQtAAAAgAegCCAQ/AlibabaSans-Regular.woff2")
-    format("woff2");
-}
-@font-face {
-  font-family: "AlibabaSans";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*E_cxRbMlZqUAAAAAQuAAAAgAegCCAQ/AlibabaSans-Medium.woff2")
-    format("woff2");
-}
-@font-face {
-  font-family: "AlibabaSans";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*E_cxRbMlZqUAAAAAQuAAAAgAegCCAQ/AlibabaSans-Bold.woff2")
-    format("woff2");
-}
-@font-face {
-  font-family: "AlibabaSans";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("//mdn.alipayobjects.com/huamei_iwk9zp/afts/file/A*E_cxRbMlZqUAAAAAQuAAAAgAegCCAQ/AlibabaSans-Heavy.woff2")
-    format("woff2");
+:root {
+  --nd-black: #f5f5f5;
+  --nd-surface: #ffffff;
+  --nd-surface-raised: #f0f0f0;
+  --nd-border: #e8e8e8;
+  --nd-border-visible: #cccccc;
+  --nd-text-disabled: #999999;
+  --nd-text-secondary: #666666;
+  --nd-text-primary: #1a1a1a;
+  --nd-text-display: #000000;
+  --nd-accent: #d71921;
+  --nd-accent-subtle: rgba(215, 25, 33, 0.08);
+  --nd-success: #4a9e5c;
+  --nd-warning: #d4a843;
+  --nd-interactive: #007aff;
+  --nd-space-xs: 4px;
+  --nd-space-sm: 8px;
+  --nd-space-md: 16px;
+  --nd-space-lg: 24px;
+  --nd-space-xl: 32px;
+  --nd-space-2xl: 48px;
+  --nd-space-3xl: 64px;
+  --nd-radius-card: 16px;
+  --nd-radius-compact: 8px;
 }
 
 html,
@@ -45,30 +30,37 @@ body,
   height: 100%;
   margin: 0;
   padding: 0;
-  font-family:
-    AlibabaSans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans',
-    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+body {
+  background: var(--nd-black);
+  color: var(--nd-text-primary);
+  font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.06) 0.8px, transparent 0.8px);
+  background-size: 16px 16px;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root,
+.ant-app,
+.ant-pro-layout {
+  position: relative;
+  z-index: 1;
 }
 
 .colorWeak {
   filter: invert(80%);
-}
-
-.ant-layout {
-  min-height: 100vh;
-}
-.ant-pro-sider.ant-layout-sider.ant-pro-sider-fixed {
-  left: unset;
-}
-
-canvas {
-  display: block;
-}
-
-body {
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 ul,
@@ -76,15 +68,365 @@ ol {
   list-style: none;
 }
 
+canvas {
+  display: block;
+}
+
+.ant-layout {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.ant-pro-sider.ant-layout-sider.ant-pro-sider-fixed {
+  left: unset;
+}
+
+.ant-typography,
+.ant-pro-page-container,
+.ant-pro-card,
+.ant-card,
+.ant-form,
+.ant-table,
+.ant-descriptions,
+.ant-modal,
+.ant-drawer,
+.ant-dropdown,
+.ant-menu,
+.ant-tabs {
+  font-family: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+}
+
+.ant-pro-layout {
+  background: transparent !important;
+}
+
+.ant-pro-layout .ant-pro-layout-bg-list,
+.ant-pro-layout-bg-list {
+  display: none !important;
+}
+
+.ant-pro-layout .ant-layout-header.ant-pro-layout-header,
+.ant-pro-layout .ant-layout-header {
+  height: 64px;
+  line-height: 64px;
+  padding-inline: 20px;
+  background: rgba(245, 245, 245, 0.88) !important;
+  border-bottom: 1px solid var(--nd-border-visible);
+  backdrop-filter: blur(10px);
+  box-shadow: none !important;
+}
+
+.ant-pro-layout .ant-layout-sider,
+.ant-pro-sider {
+  background: transparent !important;
+}
+
+.ant-pro-sider-logo {
+  height: 72px;
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--nd-border);
+}
+
+.ant-pro-sider-logo h1,
+.ant-pro-top-nav-header-logo h1 {
+  margin: 0;
+  color: var(--nd-text-display);
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ant-pro-sider-logo img,
+.ant-pro-top-nav-header-logo img {
+  display: none !important;
+}
+
+.ant-pro-base-menu,
+.ant-menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+}
+
+.ant-pro-base-menu-inline-item,
+.ant-pro-base-menu-inline-submenu > .ant-menu-submenu-title,
+.ant-menu-item,
+.ant-menu-submenu-title {
+  margin: 4px 12px !important;
+  width: calc(100% - 24px) !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  border-radius: 999px !important;
+  color: var(--nd-text-secondary) !important;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-menu-item-selected,
+.ant-pro-base-menu-inline-item-selected {
+  background: var(--nd-surface) !important;
+  color: var(--nd-text-display) !important;
+  border: 1px solid var(--nd-border-visible) !important;
+}
+
+.ant-pro-layout .ant-layout-sider-children {
+  padding: 12px 0 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border-right: 1px solid var(--nd-border-visible);
+  backdrop-filter: blur(8px);
+}
+
+.ant-pro-global-header,
+.ant-pro-global-header-collapsed-button {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.ant-pro-page-container {
+  background: transparent !important;
+}
+
+.ant-pro-page-container-children-container {
+  padding: 28px 24px 20px !important;
+}
+
+.ant-page-header,
+.ant-pro-page-container .ant-page-header {
+  padding: 12px 24px 16px 40px !important;
+  background: transparent !important;
+}
+
+.ant-page-header-heading-left {
+  gap: 16px !important;
+}
+
+.ant-page-header-back {
+  margin-inline-end: 8px !important;
+}
+
+.ant-page-header-heading-title,
+.ant-pro-page-container .ant-page-header-heading-title {
+  color: var(--nd-text-display) !important;
+  font-family: 'Doto', 'Space Mono', monospace;
+  font-size: 30px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.03em;
+  line-height: 1.05 !important;
+}
+
+.ant-page-header-heading-sub-title,
+.ant-pro-page-container .ant-page-header-heading-sub-title {
+  color: var(--nd-text-secondary) !important;
+  font-size: 13px !important;
+  line-height: 1.6;
+  max-width: 760px;
+}
+
+.ant-card,
+.ant-pro-card {
+  background: rgba(255, 255, 255, 0.76) !important;
+  border: 1px solid var(--nd-border-visible) !important;
+  border-radius: var(--nd-radius-card) !important;
+  box-shadow: none !important;
+}
+
+.ant-card-head {
+  min-height: 56px;
+  padding: 0 20px !important;
+  border-bottom: 1px solid var(--nd-border) !important;
+}
+
+.ant-card-head-title {
+  color: var(--nd-text-display);
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-card-body,
+.ant-pro-card-body {
+  padding: 20px !important;
+}
+
+.ant-btn {
+  height: 44px;
+  padding: 0 22px;
+  border-radius: 999px;
+  box-shadow: none !important;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ant-btn-default {
+  color: var(--nd-text-primary);
+  background: transparent;
+  border-color: var(--nd-border-visible);
+}
+
+.ant-btn-primary {
+  color: var(--nd-black) !important;
+  background: var(--nd-text-display) !important;
+  border-color: var(--nd-text-display) !important;
+}
+
+.ant-btn-link,
+.ant-btn-text {
+  padding-inline: 8px;
+  color: var(--nd-text-secondary);
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-select-selector,
+.ant-picker,
+.ant-input-number-input {
+  border-radius: var(--nd-radius-compact) !important;
+  border-color: var(--nd-border-visible) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: none !important;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+}
+
+.ant-input,
+.ant-input-number-input,
+.ant-select-selection-item,
+.ant-select-selection-placeholder,
+.ant-picker-input input {
+  color: var(--nd-text-primary) !important;
+  font-size: 14px;
+}
+
+.ant-form-item-label > label {
+  color: var(--nd-text-secondary) !important;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-tabs-tab-btn,
+.ant-radio-button-wrapper,
+.ant-segmented-item-label {
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-tabs-ink-bar {
+  background: var(--nd-text-display) !important;
+}
+
+.ant-table-wrapper .ant-table {
+  background: transparent !important;
+}
+
+.ant-table-thead > tr > th {
+  color: var(--nd-text-secondary) !important;
+  background: transparent !important;
+  border-bottom: 1px solid var(--nd-border-visible) !important;
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--nd-border) !important;
+  background: transparent !important;
+}
+
+.ant-tag {
+  margin-inline-end: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border-color: var(--nd-border-visible);
+  background: transparent;
+  color: var(--nd-text-secondary);
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-dropdown .ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-picker-dropdown,
+.ant-modal-content {
+  background: var(--nd-surface) !important;
+  border: 1px solid var(--nd-border-visible);
+  border-radius: 16px !important;
+  box-shadow: none !important;
+}
+
+.ant-modal-header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--nd-border);
+}
+
+.ant-modal-title {
+  color: var(--nd-text-display);
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-progress-text,
+.ant-statistic-content,
+.ant-descriptions-item-content {
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+}
+
+.ant-pro-global-footer {
+  margin-block-start: 24px;
+}
+
+.ndLabel {
+  display: inline-block;
+  color: var(--nd-text-secondary);
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 768px) {
+  .ant-pro-page-container-children-container {
+    padding: 16px !important;
+  }
+
+  .ant-page-header-heading-title,
+  .ant-pro-page-container .ant-page-header-heading-title {
+    font-size: 28px !important;
+  }
+
   .ant-table {
     width: 100%;
     overflow-x: auto;
+
     &-thead > tr,
     &-tbody > tr {
       > th,
       > td {
         white-space: pre;
+
         > span {
           display: block;
         }

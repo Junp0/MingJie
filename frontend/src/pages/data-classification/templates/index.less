@@ -1,0 +1,167 @@
+.templatePage {
+  .templateShell {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+}
+
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.templateCard,
+.templateCreateCard {
+  height: 320px;
+  cursor: pointer;
+}
+
+.templateCreateCard :global(.ant-card-body),
+.templateCard :global(.ant-card-body) {
+  height: 100%;
+  padding: 18px !important;
+}
+
+.templateCreateInner {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.templateCreatePlus {
+  color: var(--nd-text-display);
+  font-family: 'Doto', 'Space Mono', monospace;
+  font-size: 72px;
+  line-height: 1;
+}
+
+.templateCreateTitle {
+  margin-top: 14px;
+  color: var(--nd-text-display);
+  font-size: 18px;
+}
+
+.templateCreateDesc {
+  margin-top: 8px;
+  color: var(--nd-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.templateCardBody {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.templateCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.templateCardTitle {
+  margin: 0;
+  color: var(--nd-text-display);
+  font-size: 18px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.templateStatusRow {
+  margin-bottom: 12px;
+}
+
+.templateStatusMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.templateTypeText,
+.templateMetaBlock {
+  color: var(--nd-text-secondary);
+  font-size: 12px;
+}
+
+.templateCardDesc {
+  min-height: 66px;
+  margin-bottom: 12px;
+  color: var(--nd-text-primary);
+  font-size: 14px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.templateRuleRow {
+  margin-bottom: 12px;
+}
+
+.templateRuleMeta {
+  display: flex;
+  justify-content: space-between;
+  color: var(--nd-text-secondary);
+  font-size: 13px;
+}
+
+.templateRuleValue {
+  color: var(--nd-text-display);
+  font-family: 'Space Mono', 'JetBrains Mono', monospace;
+}
+
+.templateMetaBlock {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.templateMetaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.templateActionRow {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--nd-border);
+}
+
+.templateEmptyCard :global(.ant-card-body) {
+  padding: 28px !important;
+}
+
+@media (max-width: 1200px) {
+  .templateGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 992px) {
+  .templateGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .templateGrid {
+    grid-template-columns: 1fr;
+  }
+}

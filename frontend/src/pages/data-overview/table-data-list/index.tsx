@@ -1,8 +1,14 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { useLocation } from '@umijs/max';
-import { Button, Card, Drawer, Empty, List, Space, Switch, Table, Tag, Tree, Typography, message } from 'antd';
+import { Button, Card, Drawer, Empty, Space, Switch, Table, Tag, Tree, Typography, message } from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import './index.less';
+import {
+  getDefaultLevelDefinitions,
+  listClassificationTemplateRecords,
+  type LevelDefinitionItem,
+} from '@/services/data-classification/templateStore';
 import {
   listDatabaseInstances,
 } from '@/services/data-overview/overviewStore';
@@ -94,25 +100,11 @@ const getDatabaseFieldSummary = (database: DatabaseItem) => {
   const allFields = activeTables.flatMap((table) =>
     table.fields.filter((field) => !field.isDeleted),
   );
-  const levelCounter = {
-    public: 0,
-    internal: 0,
-    confidential: 0,
-    secret: 0,
-    unknown: 0,
-  };
+  const levelCounter: Record<string, number> = {};
 
   allFields.forEach((field) => {
-    if (field.dataLevel === 'public') {
-      levelCounter.public += 1;
-    } else if (field.dataLevel === 'internal') {
-      levelCounter.internal += 1;
-    } else if (field.dataLevel === 'confidential') {
-      levelCounter.confidential += 1;
-    } else if (field.dataLevel === 'secret') {
-      levelCounter.secret += 1;
-    } else {
-      levelCounter.unknown += 1;
+    if (field.levelCode) {
+      levelCounter[field.levelCode] = (levelCounter[field.levelCode] ?? 0) + 1;
     }
   });
 
@@ -123,22 +115,110 @@ const getDatabaseFieldSummary = (database: DatabaseItem) => {
   };
 };
 
-const LEVEL_COUNT_TAGS: Array<{
-  key: keyof ReturnType<typeof getDatabaseFieldSummary>["levelCounter"];
-  label: string;
-  color: string;
-}> = [
-  { key: "public", label: "公开", color: "green" },
-  { key: "internal", label: "内部", color: "blue" },
-  { key: "confidential", label: "敏感", color: "orange" },
-  { key: "secret", label: "核心", color: "red" },
-  { key: "unknown", label: "未分级", color: "default" },
-];
-
 const renderDeletedText = (value: string, deleted: boolean) => (
   <Text delete={deleted} type={deleted ? 'secondary' : undefined}>
     {value}
   </Text>
+);
+
+const renderCompactStatus = (status: 'online' | 'offline') => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 20,
+      minWidth: 76,
+      padding: '0 8px',
+      borderRadius: 999,
+      border: `1px solid ${status === 'online' ? '#9dde6f' : '#d9d9d9'}`,
+      color: status === 'online' ? '#389e0d' : '#8c8c8c',
+      background: '#fff',
+      fontSize: 10,
+      fontWeight: 700,
+      lineHeight: 1,
+      whiteSpace: 'nowrap',
+    }}
+  >
+    {status === 'online' ? '在线' : '离线'}
+  </span>
+);
+
+const renderCompactSyncStatus = (status: 'success' | 'failed' | 'syncing') => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 20,
+      minWidth: 76,
+      padding: '0 8px',
+      borderRadius: 999,
+      border: `1px solid ${
+        status === 'success' ? '#9dde6f' : status === 'syncing' ? '#91caff' : '#ffb3b3'
+      }`,
+      color: status === 'success' ? '#389e0d' : status === 'syncing' ? '#1677ff' : '#cf1322',
+      background: '#fff',
+      fontSize: 10,
+      fontWeight: 700,
+      lineHeight: 1,
+      whiteSpace: 'nowrap',
+    }}
+  >
+    {status === 'success' ? '同步成功' : status === 'syncing' ? '同步中' : '同步失败'}
+  </span>
+);
+
+const getInstanceSyncStatus = (instance: DatabaseInstance): 'success' | 'failed' | 'syncing' => {
+  const tableStatuses = instance.databases.flatMap((database) =>
+    database.tables
+      .filter((table) => !table.isDeleted)
+      .map((table) => table.syncStatus),
+  );
+
+  if (tableStatuses.includes('syncing')) {
+    return 'syncing';
+  }
+
+  if (tableStatuses.includes('failed')) {
+    return 'failed';
+  }
+
+  return 'success';
+};
+
+const getCompactSensitiveLabel = (value: string) => value.trim().slice(0, 2) || value;
+
+const renderSensitiveLevelPill = (
+  label: string,
+  count: number,
+  color: string,
+) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      height: 20,
+      minWidth: 76,
+      padding: '0 8px',
+      borderRadius: 999,
+      border: `1px solid ${color}66`,
+      color,
+      background: '#fff',
+      fontSize: 10,
+      fontWeight: 700,
+      lineHeight: 1,
+      whiteSpace: 'nowrap',
+      textAlign: 'center',
+      verticalAlign: 'middle',
+      boxSizing: 'border-box',
+    }}
+  >
+    <span>{label}</span>
+    <span>{count}</span>
+  </span>
 );
 
 const FIELD_TEMPLATES = [
@@ -158,7 +238,11 @@ const TableDataList: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const [selectedDatabaseInstance, setSelectedDatabaseInstance] = useState<string | null>(null);
   const [selectedDatabaseId, setSelectedDatabaseId] = useState<string | null>(null);
+  const [expandedTreeKeys, setExpandedTreeKeys] = useState<React.Key[]>([]);
   const [selectedTable, setSelectedTable] = useState<TableListItem | null>(null);
+  const [sensitiveLevels, setSensitiveLevels] = useState<LevelDefinitionItem[]>(
+    getDefaultLevelDefinitions().filter((item) => item.isSensitive).slice(0, 3),
+  );
   const [databaseInstances, setDatabaseInstances] = useState<DatabaseInstance[]>([]);
   const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
   const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
@@ -168,14 +252,27 @@ const TableDataList: React.FC = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const loadDatabaseInstances = async () => {
-      const assets = await listDatabaseInstances();
-      if (!cancelled) {
-        setDatabaseInstances(assets as DatabaseInstance[]);
+    const loadPageData = async () => {
+      const [assets, templates] = await Promise.all([
+        listDatabaseInstances(),
+        listClassificationTemplateRecords().catch(() => []),
+      ]);
+
+      if (cancelled) {
+        return;
       }
+
+      setDatabaseInstances(assets as DatabaseInstance[]);
+
+      const activeTemplate =
+        templates.find((template) => template.status === 'active') ?? templates[0] ?? null;
+      const nextSensitiveLevels =
+        activeTemplate?.levelDefinitions.filter((item) => item.isSensitive).slice(0, 3) ??
+        getDefaultLevelDefinitions().filter((item) => item.isSensitive).slice(0, 3);
+      setSensitiveLevels(nextSensitiveLevels);
     };
 
-    void loadDatabaseInstances();
+    void loadPageData();
 
     return () => {
       cancelled = true;
@@ -240,33 +337,32 @@ const TableDataList: React.FC = () => {
     setSelectedTable(table);
   };
 
-  const handleDatabaseTreeSelect = (selectedKeys: React.Key[]) => {
-    const selectedKey = String(selectedKeys[0] ?? '');
+  const toggleInstanceExpand = (instanceKey: string) => {
+    const treeKey = `instance:${instanceKey}`;
+    setExpandedTreeKeys((current) =>
+      current.includes(treeKey)
+        ? current.filter((key) => key !== treeKey)
+        : [...current, treeKey],
+    );
+    setSelectedDatabaseInstance(null);
+    setSelectedDatabaseId(null);
+    setSelectedTable(null);
+  };
 
-    if (!selectedKey) {
+  const selectDatabase = (databaseId: string) => {
+    const matched = databaseMap.get(databaseId);
+
+    if (!matched) {
       return;
     }
 
-    if (selectedKey.startsWith('instance:')) {
-      const instanceKey = selectedKey.replace('instance:', '');
-      setSelectedDatabaseInstance(instanceKey);
-      setSelectedDatabaseId(null);
-      setSelectedTable(null);
-      return;
-    }
-
-    if (selectedKey.startsWith('database:')) {
-      const databaseId = selectedKey.replace('database:', '');
-      const matched = databaseMap.get(databaseId);
-
-      if (!matched) {
-        return;
-      }
-
-      setSelectedDatabaseInstance(matched.instanceKey);
-      setSelectedDatabaseId(databaseId);
-      setSelectedTable(null);
-    }
+    const treeKey = `instance:${matched.instanceKey}`;
+    setExpandedTreeKeys((current) =>
+      current.includes(treeKey) ? current : [...current, treeKey],
+    );
+    setSelectedDatabaseInstance(matched.instanceKey);
+    setSelectedDatabaseId(databaseId);
+    setSelectedTable(null);
   };
 
   const getCurrentInstance = () =>
@@ -281,11 +377,7 @@ const TableDataList: React.FC = () => {
   const currentDatabase = getCurrentDatabase();
 
   const currentTables = useMemo<TableListItem[]>(() => {
-    if (!currentInstance) {
-      return [];
-    }
-
-    if (currentDatabase) {
+    if (currentDatabase && currentInstance) {
       return currentDatabase.tables.map((table) => ({
         ...table,
         assetName: currentDatabase.assetName,
@@ -296,17 +388,19 @@ const TableDataList: React.FC = () => {
       }));
     }
 
-    return currentInstance.databases.flatMap((database) =>
-      database.tables.map((table) => ({
-        ...table,
-        assetName: database.assetName,
-        port: database.port,
-        databaseName: database.name,
-        instanceIp: currentInstance.ip,
-        databaseIsDeleted: database.isDeleted,
-      })),
+    return databaseInstances.flatMap((instance) =>
+      instance.databases.flatMap((database) =>
+        database.tables.map((table) => ({
+          ...table,
+          assetName: database.assetName,
+          port: database.port,
+          databaseName: database.name,
+          instanceIp: instance.ip,
+          databaseIsDeleted: database.isDeleted,
+        })),
+      ),
     );
-  }, [currentDatabase, currentInstance]);
+  }, [currentDatabase, currentInstance, databaseInstances]);
 
   const currentFields = useMemo<FieldListItem[]>(() => {
     if (selectedTable) {
@@ -321,11 +415,7 @@ const TableDataList: React.FC = () => {
       }));
     }
 
-    if (!currentInstance) {
-      return [];
-    }
-
-    if (currentDatabase) {
+    if (currentDatabase && currentInstance) {
       return currentDatabase.tables.flatMap((table) =>
         table.fields.map((field) => ({
           ...field,
@@ -339,26 +429,44 @@ const TableDataList: React.FC = () => {
       );
     }
 
-    return currentInstance.databases.flatMap((database) =>
-      database.tables.flatMap((table) =>
-        table.fields.map((field) => ({
-          ...field,
-          assetName: database.assetName,
-          databaseName: database.name,
-          tableName: table.name,
-          port: database.port,
-          instanceIp: currentInstance.ip,
-          fieldTable: table.name,
-        })),
+    return databaseInstances.flatMap((instance) =>
+      instance.databases.flatMap((database) =>
+        database.tables.flatMap((table) =>
+          table.fields.map((field) => ({
+            ...field,
+            assetName: database.assetName,
+            databaseName: database.name,
+            tableName: table.name,
+            port: database.port,
+            instanceIp: instance.ip,
+            fieldTable: table.name,
+          })),
+        ),
       ),
     );
-  }, [currentDatabase, currentInstance, selectedTable]);
+  }, [currentDatabase, currentInstance, selectedTable, databaseInstances]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const assetId = params.get('assetId');
 
     if (!assetId) {
+      if (!selectedDatabaseId && !selectedDatabaseInstance) {
+        const firstInstance = databaseInstances[0];
+        const firstDatabase = firstInstance?.databases[0];
+
+        if (firstInstance && firstDatabase) {
+          const instanceKey = `${firstInstance.ip}:${firstInstance.port}`;
+          setExpandedTreeKeys((current) =>
+            current.includes(`instance:${instanceKey}`)
+              ? current
+              : [...current, `instance:${instanceKey}`],
+          );
+          setSelectedDatabaseInstance(instanceKey);
+          setSelectedDatabaseId(firstDatabase.id);
+          setSelectedTable(null);
+        }
+      }
       return;
     }
 
@@ -370,14 +478,21 @@ const TableDataList: React.FC = () => {
 
     setSelectedDatabaseInstance(matched.instanceKey);
     setSelectedDatabaseId(matched.database.id);
+    setExpandedTreeKeys((current) =>
+      current.includes(`instance:${matched.instanceKey}`)
+        ? current
+        : [...current, `instance:${matched.instanceKey}`],
+    );
     setSelectedTable(null);
-  }, [databaseMap, location.search, messageApi]);
+  }, [
+    databaseInstances,
+    databaseMap,
+    location.search,
+    messageApi,
+    selectedDatabaseId,
+    selectedDatabaseInstance,
+  ]);
 
-  const selectedTreeKeys = selectedDatabaseId
-    ? [`database:${selectedDatabaseId}`]
-    : selectedDatabaseInstance
-      ? [`instance:${selectedDatabaseInstance}`]
-      : [];
   const fieldScopeLabel = selectedTable
     ? `${selectedTable.assetName} (${selectedTable.instanceIp}:${selectedTable.port}) / ${selectedTable.databaseName} / ${selectedTable.name}`
     : currentDatabase
@@ -394,52 +509,90 @@ const TableDataList: React.FC = () => {
         : 'empty';
 
   return (
-    <PageContainer>
+    <PageContainer className="nothingPage tableDataPage" title="Table Data List" subTitle="按实例、数据库和数据表层级查看当前纳管结构与字段详情。">
       {contextHolder}
-      <div style={{ display: 'flex', height: 'calc(100vh - 200px)' }}>
-        <Card
-          title="库目录"
-          style={{ width: '18%', minWidth: '220px' }}
-          bodyStyle={{ padding: '8px', height: '100%', overflow: 'auto' }}
-        >
+      <div className="tableDataLayout">
+        <section className="tableSidePanel" style={{ width: '18%', minWidth: '220px' }}>
+          <div className="tableSidePanelHeader">库目录</div>
+          <div className="tableSidePanelBody">
           <Tree
-            selectedKeys={selectedTreeKeys}
-            defaultExpandAll
-            onSelect={handleDatabaseTreeSelect}
+            className="databaseTree"
+            selectable={false}
+            expandedKeys={expandedTreeKeys}
+            onExpand={(keys) => setExpandedTreeKeys(keys)}
             treeData={visibleDatabaseInstances.map((instance) => ({
               key: `instance:${instance.ip}:${instance.port}`,
               title: (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontWeight: 'bold' }}>
-                      {instance.databases.length === 1
-                        ? renderDeletedText(
-                            instance.databases[0]?.assetName ?? `${instance.ip}:${instance.port}`,
-                            instance.databases[0]?.isDeleted ?? false,
-                          )
-                        : `${instance.databases[0]?.assetName ?? '数据资产'} 等${instance.databases.length}个资产`}
-                    </span>
-                    <span style={{ fontSize: 12, color: '#999' }}>
-                      {instance.ip}:{instance.port}
-                    </span>
+                <div
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 14,
+                    cursor: 'pointer',
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleInstanceExpand(`${instance.ip}:${instance.port}`);
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
+                      <span style={{ fontWeight: 'bold', fontSize: 13, lineHeight: 1.3 }}>
+                        {instance.databases.length === 1
+                          ? renderDeletedText(
+                              instance.databases[0]?.assetName ?? `${instance.ip}:${instance.port}`,
+                              instance.databases[0]?.isDeleted ?? false,
+                            )
+                          : `${instance.databases[0]?.assetName ?? '数据资产'} 等${instance.databases.length}个资产`}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#999', lineHeight: 1.3 }}>
+                        {instance.ip}:{instance.port}
+                      </span>
+                    </div>
                   </div>
-                  <Tag color={instance.status === 'online' ? 'green' : 'red'}>
-                    {instance.status === 'online' ? '在线' : '离线'}
-                  </Tag>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      display: 'flex',
+                      gap: 8,
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    {renderCompactStatus(instance.status)}
+                    {renderCompactSyncStatus(getInstanceSyncStatus(instance))}
+                  </div>
                 </div>
               ),
               children: instance.databases.map((database) => ({
                 key: `database:${database.id}`,
                 title: (
-                  <div>
-                    <div style={{ fontWeight: 'bold' }}>
+                  <div
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: 14,
+                      background:
+                        selectedDatabaseId === database.id
+                          ? 'rgba(255, 255, 255, 0.96)'
+                          : 'transparent',
+                      border:
+                        selectedDatabaseId === database.id
+                          ? '1px solid var(--nd-border-visible)'
+                          : '1px solid transparent',
+                      transition: 'background-color 0.2s ease, border-color 0.2s ease',
+                      cursor: 'pointer',
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      selectDatabase(database.id);
+                    }}
+                  >
+                    <div style={{ fontWeight: 'bold', fontSize: 12, lineHeight: 1.35 }}>
                       {renderDeletedText(database.name, database.isDeleted)}
                     </div>
                     {(() => {
                       const summary = getDatabaseFieldSummary(database);
                       return (
                         <>
-                          <div style={{ fontSize: 12, color: '#666' }}>
+                          <div style={{ fontSize: 11, color: '#666', marginTop: 2, lineHeight: 1.35 }}>
                             {summary.tableCount} 个表 / {summary.fieldCount} 个字段
                           </div>
                           <Space
@@ -447,16 +600,16 @@ const TableDataList: React.FC = () => {
                             wrap
                             style={{ marginTop: 4 }}
                           >
-                            {LEVEL_COUNT_TAGS.filter(
-                              ({ key }) => summary.levelCounter[key] > 0
-                            ).map(({ key, label, color }) => (
-                              <Tag
-                                key={key}
-                                color={color}
-                                style={{ marginInlineEnd: 0 }}
-                              >
-                                {label} {summary.levelCounter[key]}
-                              </Tag>
+                            {sensitiveLevels.filter(
+                              (level) => (summary.levelCounter[level.code] ?? 0) > 0,
+                            ).map((level) => (
+                              <span key={level.code} style={{ marginInlineEnd: 0 }}>
+                                {renderSensitiveLevelPill(
+                                  getCompactSensitiveLabel(level.name),
+                                  summary.levelCounter[level.code],
+                                  level.color,
+                                )}
+                              </span>
                             ))}
                           </Space>
                         </>
@@ -467,11 +620,12 @@ const TableDataList: React.FC = () => {
               })),
             }))}
           />
-        </Card>
+          </div>
+        </section>
 
-        <Card
-          title="表目录"
-          extra={
+        <section className="tableSidePanel" style={{ width: '18%', minWidth: '220px' }}>
+          <div className="tableSidePanelHeader">
+            <span>表目录</span>
             <Space size={8}>
               <Text type="secondary">隐藏已删除</Text>
               <Switch
@@ -482,93 +636,69 @@ const TableDataList: React.FC = () => {
                 }}
               />
             </Space>
-          }
-          style={{ width: '18%', minWidth: '220px' }}
-          bodyStyle={{ padding: '8px', height: '100%', overflow: 'auto' }}
-        >
-          {currentInstance ? (
-            <List
-              dataSource={
-                hideDeletedObjects
+          </div>
+          <div className="tableSidePanelBody tableCatalogScroll">
+            {currentInstance ? (
+              <div className="tableCatalogList">
+                {(hideDeletedObjects
                   ? currentTables.filter((table) => !table.isDeleted)
                   : currentTables
-              }
-              renderItem={(table) => (
-                <List.Item
-                  style={{
-                    cursor: 'pointer',
-                    backgroundColor:
-                      selectedTable?.id === table.id &&
-                      selectedTable?.databaseName === table.databaseName
-                        ? '#f0f5ff'
-                        : 'transparent',
-                    padding: '8px',
-                    borderRadius: '4px',
-                    marginBottom: '4px',
-                  }}
-                  onClick={() => handleTableSelect(table)}
-                >
-                  <div style={{ width: '100%' }}>
-                    <div style={{ fontWeight: 'bold' }}>
-                      {renderDeletedText(table.name, table.isDeleted)}
+                ).map((table) => (
+                  <div
+                    key={`${table.databaseName}-${table.id}`}
+                    className="tableCatalogItem"
+                    style={{
+                      cursor: 'pointer',
+                      backgroundColor:
+                        selectedTable?.id === table.id &&
+                        selectedTable?.databaseName === table.databaseName
+                          ? '#f3f3f3'
+                          : 'transparent',
+                      padding: '8px 10px',
+                      borderRadius: '12px',
+                      marginBottom: '4px',
+                    }}
+                    onClick={() => handleTableSelect(table)}
+                  >
+                    <div style={{ width: '100%' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: 12, lineHeight: 1.35 }}>
+                        {renderDeletedText(table.name, table.isDeleted)}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#666', lineHeight: 1.35, marginTop: 2 }}>
+                        数据库: {renderDeletedText(table.databaseName, table.databaseIsDeleted)}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#666', lineHeight: 1.35 }}>
+                        行数: {table.rowCount.toLocaleString()}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#666', lineHeight: 1.35 }}>
+                        大小: {(table.size / 1024 / 1024).toFixed(2)} MB
+                      </div>
+                      {(table.isDeleted ||
+                        table.status !== 'online' ||
+                        table.syncStatus !== 'success') && (
+                        <Space size={6} style={{ marginTop: '6px' }} wrap>
+                          {(table.isDeleted || table.status !== 'online') &&
+                            renderCompactStatus('offline')}
+                          {table.syncStatus !== 'success' &&
+                            renderCompactSyncStatus(table.syncStatus)}
+                        </Space>
+                      )}
                     </div>
-                    <div style={{ fontSize: 12, color: '#666' }}>
-                      数据库: {renderDeletedText(table.databaseName, table.databaseIsDeleted)}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#666' }}>
-                      行数: {table.rowCount.toLocaleString()}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#666' }}>
-                      大小: {(table.size / 1024 / 1024).toFixed(2)} MB
-                    </div>
-                    <Space size="small" style={{ marginTop: '4px' }}>
-                      <Tag
-                        color={
-                          table.status === 'online'
-                            ? 'green'
-                            : table.status === 'maintenance'
-                              ? 'orange'
-                              : 'red'
-                        }
-                      >
-                        {table.isDeleted
-                          ? '已删除'
-                          : table.status === 'online'
-                          ? '在线'
-                          : table.status === 'maintenance'
-                            ? '维护中'
-                            : '离线'}
-                      </Tag>
-                      <Tag
-                        color={
-                          table.syncStatus === 'success'
-                            ? 'green'
-                            : table.syncStatus === 'syncing'
-                              ? 'blue'
-                              : 'red'
-                        }
-                      >
-                        {table.syncStatus === 'success'
-                          ? '同步成功'
-                          : table.syncStatus === 'syncing'
-                            ? '同步中'
-                            : '同步失败'}
-                      </Tag>
-                    </Space>
                   </div>
-                </List.Item>
-              )}
-            />
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="请先选择数据资产"
-              style={{ marginTop: 48 }}
-            />
-          )}
-        </Card>
+                ))}
+              </div>
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="请先选择数据资产"
+                style={{ marginTop: 48 }}
+              />
+            )}
+          </div>
+        </section>
 
         <Card
+          className="tableDataPanel"
           title={
             <div>
               字段信息
@@ -580,7 +710,7 @@ const TableDataList: React.FC = () => {
             </div>
           }
           style={{ width: '64%', flex: 1 }}
-          bodyStyle={{ padding: '8px', height: '100%' }}
+          bodyStyle={{ padding: '8px', overflow: 'auto' }}
         >
           {currentInstance ? (
             <ProTable<FieldListItem>

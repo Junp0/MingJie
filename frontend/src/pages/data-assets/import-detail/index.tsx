@@ -29,6 +29,7 @@ import {
   message,
 } from "antd";
 import React, { useEffect, useMemo, useState } from "react";
+import "./index.less";
 
 const { Paragraph, Text } = Typography;
 
@@ -46,6 +47,21 @@ const renderDeletedLabel = (
     ) : null}
   </Space>
 );
+
+const getImportStatusMeta = (status: DataAssetImportRecord["status"]) => {
+  switch (status) {
+    case "running":
+      return { label: "RUNNING", tone: "running" };
+    case "completed":
+      return { label: "COMPLETED", tone: "success" };
+    case "failed":
+      return { label: "FAILED", tone: "danger" };
+    case "stopped":
+      return { label: "STOPPED", tone: "muted" };
+    default:
+      return { label: "PENDING", tone: "muted" };
+  }
+};
 
 const ImportDetail: React.FC = () => {
   const navigate = useNavigate();
@@ -241,10 +257,25 @@ const ImportDetail: React.FC = () => {
     }));
   }, [visibleSchemaTables]);
 
+  const statusMeta = importTask ? getImportStatusMeta(importTask.status) : null;
+
+  const progressSegments = useMemo(
+    () =>
+      Array.from({ length: 16 }, (_, index) => {
+        const threshold = ((index + 1) / 16) * 100;
+        return {
+          active: (importTask?.progress ?? 0) >= threshold,
+          accent: importTask?.status === "failed" && (importTask?.progress ?? 0) >= threshold,
+        };
+      }),
+    [importTask?.progress, importTask?.status]
+  );
+
   if (!importTask) {
     return (
       <PageContainer
-        title="导入任务详情"
+        title="Import Task Detail"
+        subTitle="查看当前导入任务的状态、数据源配置与最新导入结构详情。"
         onBack={() => navigate("/data-assets/data-import")}
         backIcon={<ArrowLeftOutlined />}
       >
@@ -260,7 +291,9 @@ const ImportDetail: React.FC = () => {
 
   return (
     <PageContainer
-      title="导入任务详情"
+      className="importDetailPage"
+      title="Import Task Detail"
+      subTitle="查看任务进度、接入配置、关联分类任务以及当前导入的结构快照。"
       onBack={() => navigate("/data-assets/data-import")}
       backIcon={<ArrowLeftOutlined />}
       extra={[
@@ -351,8 +384,9 @@ const ImportDetail: React.FC = () => {
       ].filter(Boolean)}
     >
       {contextHolder}
+      <div className="importDetailShell">
       <Space direction="vertical" size="large" style={{ width: "100%" }}>
-        <Card title="基础详情" size="small">
+        <Card title="基础详情" size="small" className="detailSectionCard">
           <Descriptions column={3} bordered>
             <Descriptions.Item label="创建人">
               {importTask.creator}
@@ -366,7 +400,7 @@ const ImportDetail: React.FC = () => {
           </Descriptions>
         </Card>
 
-        <Card title="数据资产详情" size="small">
+        <Card title="数据资产详情" size="small" className="detailSectionCard">
           <Descriptions column={2} bordered>
             <Descriptions.Item label="数据资产名称">
               {renderDeletedLabel(
@@ -391,15 +425,7 @@ const ImportDetail: React.FC = () => {
               {importTask.assetGroupName}
             </Descriptions.Item>
             <Descriptions.Item label="任务状态">
-              <Tag
-                color={
-                  importTask.status === "running"
-                    ? "blue"
-                    : importTask.status === "completed"
-                    ? "green"
-                    : "default"
-                }
-              >
+              <Tag className={`statusTag ${statusMeta?.tone || "muted"}`}>
                 {importTask.status === "running"
                   ? "运行中"
                   : importTask.status === "completed"
@@ -431,6 +457,7 @@ const ImportDetail: React.FC = () => {
         <Card
           title="关联分类分级任务"
           size="small"
+          className="detailSectionCard"
           extra={
             linkedClassificationTask ? (
               <Tag icon={<LinkOutlined />} color="processing">
@@ -495,6 +522,7 @@ const ImportDetail: React.FC = () => {
         <Card
           title="当前库表结构"
           size="small"
+          className="detailSectionCard"
           extra={
             <Space wrap>
               <Space size={8}>
@@ -560,6 +588,7 @@ const ImportDetail: React.FC = () => {
           </Paragraph>
         </Card>
       </Space>
+      </div>
     </PageContainer>
   );
 };

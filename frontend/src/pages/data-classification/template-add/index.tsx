@@ -34,7 +34,8 @@ const TemplateAdd: React.FC = () => {
   return (
     <PageContainer
       header={{
-        title: '新增模板',
+        title: 'Create Template',
+        subTitle: '先定义模板基础信息与生命周期状态，再进入详细结构配置。',
         onBack: () => navigate('/data-classification/templates'),
         backIcon: <ArrowLeftOutlined />,
       }}

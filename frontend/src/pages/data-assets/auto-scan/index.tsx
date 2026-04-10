@@ -489,7 +489,9 @@ const AutoScanDataAssetsPage: React.FC = () => {
 
   return (
     <PageContainer
-      title="数据资产发现"
+      title="Asset Discovery"
+      className="nothingPage"
+      subTitle="集中管理扫描规则、发现结果、忽略状态与导入接管决策。"
       extra={[
         <Button
           key="asset-list"
@@ -500,7 +502,6 @@ const AutoScanDataAssetsPage: React.FC = () => {
       ]}
     >
       {contextHolder}
-
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} lg={6}>
           <Card>

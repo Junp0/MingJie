@@ -3,6 +3,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { useNavigate } from '@umijs/max';
 import { Badge, Button, Card, Empty, Modal, Space, Switch, message } from 'antd';
 import React, { useEffect, useState } from 'react';
+import './index.less';
 import TemplateEditModal from '../components/TemplateEditModal';
 import {
   deleteClassificationTemplate,
@@ -114,45 +115,28 @@ const ClassificationTemplates: React.FC = () => {
     }
   };
 
+  const activeTemplateCount = templates.filter((item) => item.status === 'active').length;
+  const draftTemplateCount = templates.filter((item) => item.status === 'draft').length;
+
   return (
-    <PageContainer>
+    <PageContainer
+      className="templatePage"
+      title="Template Library"
+      subTitle="集中查看分类模板、比较状态差异，并进入模板编辑流程。"
+    >
       {contextHolder}
-      <div style={{ padding: 24 }}>
+      <div className="templateShell">
         {templates.length ? (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-              gap: 16,
-            }}
-          >
+          <div className="templateGrid">
             <Card
               hoverable
-              style={{ height: 300, cursor: 'pointer' }}
-              bodyStyle={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 16,
-              }}
+              className="templateCreateCard"
               onClick={() => navigate('/data-classification/template-add')}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                  color: '#1677ff',
-                }}
-              >
-                <div style={{ fontSize: 48, lineHeight: 1, marginBottom: 16 }}>+</div>
-                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>新增模板</div>
-                <div style={{ fontSize: 14, color: '#666', textAlign: 'center' }}>
-                  点击创建新的分类分级模板
-                </div>
+              <div className="templateCreateInner">
+                <div className="templateCreatePlus">+</div>
+                <div className="templateCreateTitle">新增模板</div>
+                <div className="templateCreateDesc">点击创建新的分类分级模板</div>
               </div>
             </Card>
 
@@ -160,35 +144,12 @@ const ClassificationTemplates: React.FC = () => {
               <Card
                 key={item.id}
                 hoverable
-                style={{ height: 300, cursor: 'pointer' }}
-                bodyStyle={{
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  padding: 16,
-                }}
+                className="templateCard"
                 onClick={() => handleViewDetail(item)}
               >
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <div
-                    style={{
-                      marginBottom: 12,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 12,
-                    }}
-                  >
-                    <h3
-                      style={{
-                        margin: 0,
-                        fontSize: 16,
-                        fontWeight: 600,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
+                <div className="templateCardBody">
+                  <div className="templateCardHead">
+                    <h3 className="templateCardTitle">
                       {item.templateName}
                     </h3>
                     <Switch
@@ -202,85 +163,36 @@ const ClassificationTemplates: React.FC = () => {
                     />
                   </div>
 
-                  <div style={{ marginBottom: 12 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                      }}
-                    >
+                  <div className="templateStatusRow">
+                    <div className="templateStatusMeta">
                       <Badge status={getStatusColor(item.status) as never} text={getStatusText(item.status)} />
-                      <span
-                        style={{
-                          color: '#8c8c8c',
-                          fontSize: 12,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
+                      <span className="templateTypeText">
                         类型：{item.templateType}
                       </span>
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      marginBottom: 12,
-                      color: '#666',
-                      fontSize: 14,
-                      minHeight: 66,
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
+                  <div className="templateCardDesc">
                     {item.description}
                   </div>
 
-                  <div style={{ marginBottom: 12, fontSize: 13 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <div className="templateRuleRow">
+                    <div className="templateRuleMeta">
                       <span>识别规则数：</span>
-                      <span style={{ fontWeight: 600 }}>{item.ruleCount}</span>
+                      <span className="templateRuleValue">{item.ruleCount}</span>
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      marginTop: 'auto',
-                      fontSize: 12,
-                      color: '#999',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 4,
-                    }}
-                  >
+                  <div className="templateMetaBlock">
                     <div>创建人：{item.creator}</div>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: 8,
-                      }}
-                    >
+                    <div className="templateMetaRow">
                       <span style={{ whiteSpace: 'nowrap' }}>创建时间：{item.createTime}</span>
                       <span style={{ whiteSpace: 'nowrap' }}>更新时间：{item.updatedAt}</span>
                     </div>
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    marginTop: 16,
-                    paddingTop: 12,
-                    borderTop: '1px solid #f0f0f0',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                  }}
-                >
+                <div className="templateActionRow">
                   <Button
                     type="link"
                     size="small"
@@ -331,7 +243,7 @@ const ClassificationTemplates: React.FC = () => {
             ))}
           </div>
         ) : (
-          <Card>
+          <Card className="templateEmptyCard">
             <Empty
               description="暂无模板"
               image={Empty.PRESENTED_IMAGE_SIMPLE}

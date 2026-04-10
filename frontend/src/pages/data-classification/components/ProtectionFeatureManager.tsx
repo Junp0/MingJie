@@ -392,13 +392,13 @@ const ProtectionFeatureManager: React.FC<ProtectionFeatureManagerProps> = ({
 
   return (
     <PageContainer
+      className="nothingPage"
       header={{
         title,
         subTitle: description,
       }}
     >
       {contextHolder}
-
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} md={8}>
           <Card>

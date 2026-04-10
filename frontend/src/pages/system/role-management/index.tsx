@@ -162,7 +162,7 @@ const RoleManagementPage: React.FC = () => {
   ];
 
   return (
-    <PageContainer title="角色管理">
+    <PageContainer title="Role Management" className="nothingPage" subTitle="集中维护角色定义、权限覆盖范围和内置角色状态。">
       <ProTable<RoleRecord>
         rowKey="id"
         actionRef={actionRef}

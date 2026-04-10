@@ -106,7 +106,7 @@ const MissedDataList: React.FC = () => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer className="nothingPage" title="Missed Data List" subTitle="定位未命中分类规则的字段，查看样本并确定规则优化优先级。">
       {contextHolder}
       <ProTable<MissedDataItem>
         actionRef={actionRef}

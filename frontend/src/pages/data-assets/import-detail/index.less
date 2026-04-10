@@ -1,0 +1,49 @@
+.importDetailPage {
+  .importDetailShell {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+}
+
+.detailSectionCard :global(.ant-card-body) {
+  padding: 24px !important;
+}
+
+.statusTag {
+  &.running {
+    color: #111111 !important;
+    border-color: #111111 !important;
+  }
+
+  &.success {
+    color: var(--nd-success) !important;
+    border-color: var(--nd-success) !important;
+  }
+
+  &.danger {
+    color: var(--nd-accent) !important;
+    border-color: var(--nd-accent) !important;
+  }
+
+  &.muted {
+    color: var(--nd-text-secondary) !important;
+    border-color: var(--nd-border-visible) !important;
+  }
+}
+
+.detailSectionCard {
+  .ant-collapse {
+    background: transparent;
+    border: 1px solid var(--nd-border) !important;
+    border-radius: 16px !important;
+  }
+
+  .ant-collapse-item {
+    border-bottom-color: var(--nd-border) !important;
+  }
+
+  .ant-collapse-header {
+    align-items: center !important;
+  }
+}

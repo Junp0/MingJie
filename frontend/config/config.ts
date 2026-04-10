@@ -83,7 +83,7 @@ export default defineConfig({
    * @name layout 插件
    * @doc https://umijs.org/docs/max/layout-menu
    */
-  title: 'Ant Design Pro',
+  title: 'MINGJIE DCG',
   layout: {
     locale: true,
     ...defaultSettings,
@@ -119,7 +119,22 @@ export default defineConfig({
       theme: {
         cssVar: true,
         token: {
-          fontFamily: 'AlibabaSans, sans-serif',
+          colorPrimary: '#111111',
+          colorBgBase: '#f5f5f5',
+          colorBgLayout: '#f5f5f5',
+          colorBgContainer: '#ffffff',
+          colorText: '#1a1a1a',
+          colorTextHeading: '#000000',
+          colorTextSecondary: '#666666',
+          colorBorder: '#e8e8e8',
+          colorBorderSecondary: '#cccccc',
+          borderRadius: 16,
+          borderRadiusLG: 16,
+          borderRadiusSM: 8,
+          controlHeight: 44,
+          wireframe: true,
+          fontFamily: '"Space Grotesk", "DM Sans", system-ui, sans-serif',
+          fontFamilyCode: '"Space Mono", "JetBrains Mono", monospace',
         },
       },
     },

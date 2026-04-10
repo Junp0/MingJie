@@ -378,7 +378,7 @@ const ClassificationTasks: React.FC = () => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer className="nothingPage" title="Classification Tasks" subTitle="统一管理分类任务创建、模板绑定、执行计划与任务进度。">
       {contextHolder}
       <ProTable<ClassificationTaskRecord>
         actionRef={actionRef}

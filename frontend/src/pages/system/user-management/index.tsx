@@ -163,7 +163,7 @@ const UserManagementPage: React.FC = () => {
   ];
 
   return (
-    <PageContainer title="用户管理">
+    <PageContainer title="User Management" className="nothingPage" subTitle="创建、更新、禁用与重置用户账户，同时跟踪角色归属和状态。">
       <ProTable<UserRecord>
         rowKey="id"
         actionRef={actionRef}

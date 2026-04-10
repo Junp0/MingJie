@@ -5,14 +5,8 @@ import {
   Pie,
   Rose,
 } from '@ant-design/plots';
-import {
-  ApartmentOutlined,
-  DatabaseOutlined,
-  SafetyCertificateOutlined,
-  TagsOutlined,
-} from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
-import { Card, Col, Progress, Row, Spin, Tooltip, Typography } from 'antd';
+import { Card, Col, Row, Spin, Tooltip, Typography } from 'antd';
 import dayjs from 'dayjs';
 import React, { useMemo } from 'react';
 import { collectDataTypes, countCategoryNodes } from '@/services/data-classification/templateStore';
@@ -39,8 +33,20 @@ const taskStatusLabelMap = {
 } as const;
 
 const taskSourceColorMap = {
-  任务中心: '#722ed1',
-  导入流程: '#1677ff',
+  任务中心: '#111111',
+  导入流程: '#666666',
+} as const;
+
+const chartTips: Record<string, string> = {
+  assetSource: '观察不同来源的数据资产接入比例，识别是否过度集中',
+  assetTrend: '观察近期资产导入活跃度，判断接入是否持续推进',
+  groupField: '识别字段最密集的分组，通常最值得优先治理',
+  rootGroup: '各一级分组承载的数据库、表和字段规模',
+  category: '分类覆盖反映模板目录建设的完整度',
+  level: '分级标签占比是否合理，是否存在级别偏斜',
+  template: '衡量模板建设的深度与颗粒度',
+  governance: '从敏感字段、脱敏、加密和特征四个方向看治理覆盖',
+  taskStatus: '区分任务中心和导入流程两个入口的任务量差异',
 } as const;
 
 const aggregateByKey = <T,>(
@@ -55,17 +61,18 @@ const aggregateByKey = <T,>(
   return result;
 };
 
-const chartTips: Record<string, string> = {
-  assetSource: '观察不同来源的数据资产接入比例，识别是否过度集中',
-  assetTrend: '观察近期资产导入活跃度，判断接入是否持续推进',
-  groupField: '识别字段最密集的分组，通常最值得优先治理',
-  rootGroup: '各一级分组承载的数据库、表和字段规模',
-  category: '分类覆盖反映模板目录建设的完整度',
-  level: '分级标签占比是否合理，是否存在级别偏斜',
-  template: '衡量模板建设的深度与颗粒度',
-  governance: '从敏感字段、脱敏、加密和特征四个方向看治理覆盖',
-  taskStatus: '区分任务中心和导入流程两个入口的任务量差异',
-};
+const buildSegments = (percent: number, count = 20) =>
+  Array.from({ length: count }, (_, index) => {
+    const threshold = ((index + 1) / count) * 100;
+    return {
+      active: percent >= threshold,
+      accent: percent < 60 && index + 1 > 12 && percent >= threshold,
+    };
+  });
+
+const monoPiePalette = ['#111111', '#666666', '#999999', '#cccccc'];
+const governancePalette = ['#111111', '#666666', '#999999', '#d71921', '#d4a843'];
+const levelPalette = ['#4a9e5c', '#d4a843', '#d71921', '#111111', '#666666'];
 
 const Analysis: React.FC = () => {
   const {
@@ -78,52 +85,61 @@ const Analysis: React.FC = () => {
     encryptionFeatures,
   } = useDashboardData();
 
-  const isLoading = assetGroups.length === 0 && importTasks.length === 0 && templates.length === 0;
+  const isLoading =
+    assetGroups.length === 0 &&
+    importTasks.length === 0 &&
+    templates.length === 0;
 
   const allDataTypes = useMemo(
-    () => templates.flatMap((template) => template.categories.flatMap((category) => collectDataTypes(category))),
+    () =>
+      templates.flatMap((template) =>
+        template.categories.flatMap((category) => collectDataTypes(category)),
+      ),
     [templates],
   );
 
   const governancePercent = useMemo(() => {
     const total = classificationTasks.length;
     if (total === 0) return 0;
-    const completed = classificationTasks.filter((task) => task.status === 'completed').length;
+    const completed = classificationTasks.filter(
+      (task) => task.status === 'completed',
+    ).length;
     return Math.round((completed / total) * 100);
   }, [classificationTasks]);
 
+  const completedTaskCount = classificationTasks.filter(
+    (task) => task.status === 'completed',
+  ).length;
+
   const summaryMetrics = [
     {
+      code: 'A-01',
       title: '资产总量',
       value: assetGroups.reduce((sum, group) => sum + group.databaseCount, 0),
       suffix: '库',
-      icon: <DatabaseOutlined />,
-      extra: `${assetGroups.reduce((sum, group) => sum + group.tableCount, 0)} 张表`,
-      colorClass: 'statCardBlue',
+      detail: `${assetGroups.reduce((sum, group) => sum + group.tableCount, 0)} 张表 / ${assetGroups.reduce((sum, group) => sum + group.fieldCount, 0)} 字段`,
     },
     {
+      code: 'G-02',
       title: '资产分组',
       value: assetGroups.length,
       suffix: '组',
-      icon: <ApartmentOutlined />,
-      extra: `${assetGroups.filter((group) => group.level === 1).length} 个一级分组`,
-      colorClass: 'statCardCyan',
+      detail: `${assetGroups.filter((group) => group.level === 1).length} 个一级分组`,
     },
     {
+      code: 'T-03',
       title: '分类模板',
       value: templateSummaries.length,
-      suffix: '个',
-      icon: <TagsOutlined />,
-      extra: `${templateSummaries.filter((template) => template.status === 'active').length} 个启用`,
-      colorClass: 'statCardPurple',
+      suffix: '份',
+      detail: `${templateSummaries.filter((template) => template.status === 'active').length} 份已启用`,
     },
     {
+      code: 'P-04',
       title: '治理特征',
       value: maskingFeatures.length + encryptionFeatures.length,
       suffix: '项',
-      icon: <SafetyCertificateOutlined />,
-      extra: `${maskingFeatures.length} 脱敏 / ${encryptionFeatures.length} 加密`,
-      colorClass: 'statCardOrange',
+      detail: `${maskingFeatures.length} 脱敏 / ${encryptionFeatures.length} 加密`,
+      accent: true,
     },
   ];
 
@@ -140,7 +156,6 @@ const Analysis: React.FC = () => {
       importTasks,
       (task) => parseBeijingDateTime(task.createTime)?.format('MM-DD') ?? '',
     );
-    // Fill in the last 14 days so the axis is continuous
     const days: { date: string; value: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = dayjs().subtract(i, 'day').format('MM-DD');
@@ -177,10 +192,17 @@ const Analysis: React.FC = () => {
     const categoryCounter = new Map<string, number>();
     templates.forEach((template) => {
       template.categories.forEach((category) => {
-        categoryCounter.set(category.name, (categoryCounter.get(category.name) ?? 0) + collectDataTypes(category).length);
+        categoryCounter.set(
+          category.name,
+          (categoryCounter.get(category.name) ?? 0) +
+            collectDataTypes(category).length,
+        );
       });
     });
-    return Array.from(categoryCounter.entries()).map(([type, value]) => ({ type, value }));
+    return Array.from(categoryCounter.entries()).map(([type, value]) => ({
+      type,
+      value,
+    }));
   }, [templates]);
 
   const levelDistributionData = useMemo(() => {
@@ -188,7 +210,10 @@ const Analysis: React.FC = () => {
     allDataTypes.forEach((item) => {
       levelCounter.set(item.levelName, (levelCounter.get(item.levelName) ?? 0) + 1);
     });
-    return Array.from(levelCounter.entries()).map(([type, value]) => ({ type, value }));
+    return Array.from(levelCounter.entries()).map(([type, value]) => ({
+      type,
+      value,
+    }));
   }, [allDataTypes]);
 
   const templateCoverageData = useMemo(
@@ -229,11 +254,13 @@ const Analysis: React.FC = () => {
     [classificationTasks],
   );
 
+  const heroSegments = buildSegments(governancePercent);
+
   if (isLoading) {
     return (
-      <PageContainer header={{ title: '全局分类分级概览' }}>
+      <PageContainer header={{ title: 'Governance Overview' }}>
         <div className="loadingWrap">
-          <Spin size="large" tip="加载数据中..." />
+          <Spin size="large" tip="[ LOADING ]" />
         </div>
       </PageContainer>
     );
@@ -243,47 +270,41 @@ const Analysis: React.FC = () => {
     <PageContainer
       className="analysisPage"
       header={{
-        title: '全局分类分级概览',
-        subTitle: '从资产、分类、分级、治理能力和分组覆盖五个维度，持续观察全局数据治理情况',
+        title: 'Governance Overview',
+        subTitle:
+          '集中查看平台级治理进度、资产规模、模板覆盖情况与整体运行状态。',
       }}
     >
-      {/* Governance Progress Banner */}
-      <div className="governanceBanner">
-        <div className="governanceBannerLeft">
-          <div className="governanceBannerTitle">数据治理整体进度</div>
-          <div className="governanceBannerSub">
-            已完成 {classificationTasks.filter((t) => t.status === 'completed').length} / {classificationTasks.length} 个分类分级任务
-          </div>
-        </div>
-        <div className="governanceProgressWrap">
-          <Progress
-            percent={governancePercent}
-            strokeColor={{ from: '#1677ff', to: '#13c2c2' }}
-            size={['100%', 14]}
-          />
-        </div>
+      <div className="sectionLead">
+        <span className="ndLabel">Secondary Metrics</span>
+        <Text className="sectionCopy">
+          把最常用的资产、分组、模板和治理能力放在一屏之内，用数字而不是装饰建立层级。
+        </Text>
       </div>
 
-      {/* Summary Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }} className="summaryRow">
+      <Row gutter={[16, 16]} className="summaryRow">
         {summaryMetrics.map((item) => (
           <Col xs={24} sm={12} xl={6} key={item.title}>
-            <Card className={`statCard ${item.colorClass}`} bordered={false}>
-              <div className="statIconWrap">{item.icon}</div>
-              <div>
-                <div className="statTitle">{item.title}</div>
-                <div>
-                  <span className="statValue">{item.value}</span>
-                  <span className="statSuffix">{item.suffix}</span>
-                </div>
-                <div className="statExtra">{item.extra}</div>
+            <Card className={`summaryCard ${item.accent ? 'summaryCardAccent' : ''}`} bordered={false}>
+              <div className="summaryCode">{item.code}</div>
+              <div className="summaryTitle">{item.title}</div>
+              <div className="summaryValueRow">
+                <span className="summaryValue">{item.value}</span>
+                <span className="summarySuffix">{item.suffix}</span>
               </div>
+              <div className="summaryDetail">{item.detail}</div>
             </Card>
           </Col>
         ))}
       </Row>
 
-      {/* Chart Row 1 — 4 columns */}
+      <div className="sectionLead">
+        <span className="ndLabel">Tertiary Views</span>
+        <Text className="sectionCopy">
+          图表只负责补充比例和趋势，所有图形保持单色为主，只有风险相关数据才使用提示色。
+        </Text>
+      </div>
+
       <Row gutter={[24, 24]} className="chartRow">
         <Col xs={24} sm={12} xl={6}>
           <Card className="chartCard" title={<Tooltip title={chartTips.assetSource}>资产来源结构</Tooltip>} bordered={false}>
@@ -294,10 +315,10 @@ const Analysis: React.FC = () => {
                 colorField="type"
                 height={220}
                 radius={0.86}
-                innerRadius={0.55}
+                innerRadius={0.58}
                 legend={{ position: 'bottom' }}
-                label={{ text: 'type', style: { fontSize: 11 } }}
-                color={['#1677ff', '#13c2c2', '#722ed1', '#fa8c16']}
+                label={false}
+                color={monoPiePalette}
               />
             </div>
           </Card>
@@ -311,8 +332,8 @@ const Analysis: React.FC = () => {
                 xField="date"
                 yField="value"
                 height={220}
-                color="#1677ff"
-                point={{ size: 3, shape: 'circle' }}
+                color="#111111"
+                point={{ size: 2, shape: 'circle' }}
                 style={{ lineWidth: 2 }}
               />
             </div>
@@ -327,9 +348,8 @@ const Analysis: React.FC = () => {
                 xField="group"
                 yField="value"
                 height={220}
-                color="#27d8ff"
+                color="#111111"
                 legend={false}
-                style={{ radiusTopLeft: 4, radiusTopRight: 4 }}
               />
             </div>
           </Card>
@@ -345,15 +365,14 @@ const Analysis: React.FC = () => {
                 height={220}
                 colorField="metric"
                 isGroup
-                label={{ position: 'top', style: { fontSize: 10 } }}
-                color={['#4d8dff', '#13c2c2', '#fa8c16']}
+                label={false}
+                color={['#111111', '#666666', '#b5b5b5']}
               />
             </div>
           </Card>
         </Col>
       </Row>
 
-      {/* Chart Row 2 — 4 columns */}
       <Row gutter={[24, 24]} className="chartRow">
         <Col xs={24} sm={12} xl={6}>
           <Card className="chartCard" title={<Tooltip title={chartTips.category}>分类情况分布</Tooltip>} bordered={false}>
@@ -366,7 +385,7 @@ const Analysis: React.FC = () => {
                 colorField="type"
                 radius={0.82}
                 legend={{ position: 'bottom' }}
-                color={['#1677ff', '#27d8ff', '#13c2c2', '#fa8c16', '#722ed1', '#eb2f96']}
+                color={monoPiePalette}
               />
             </div>
           </Card>
@@ -382,8 +401,8 @@ const Analysis: React.FC = () => {
                 height={220}
                 radius={0.84}
                 legend={{ position: 'bottom' }}
-                label={{ text: 'type', style: { fontSize: 11 } }}
-                color={['#f5222d', '#fa8c16', '#fadb14', '#52c41a', '#13c2c2', '#1677ff']}
+                label={false}
+                color={levelPalette}
               />
             </div>
           </Card>
@@ -399,7 +418,7 @@ const Analysis: React.FC = () => {
                 height={220}
                 colorField="metric"
                 isGroup
-                color={['#722ed1', '#4d8dff']}
+                color={['#111111', '#999999']}
               />
             </div>
           </Card>
@@ -414,14 +433,14 @@ const Analysis: React.FC = () => {
                 yField="value"
                 height={220}
                 legend={false}
-                color="#59f0b0"
+                colorField="item"
+                color={governancePalette}
               />
             </div>
           </Card>
         </Col>
       </Row>
 
-      {/* Chart Row 3 — Full Width */}
       <Row gutter={[24, 24]} className="chartRow">
         <Col xs={24}>
           <Card className="chartCard" title={<Tooltip title={chartTips.taskStatus}>分类分级任务来源与状态</Tooltip>} bordered={false}>
@@ -433,7 +452,9 @@ const Analysis: React.FC = () => {
                 height={200}
                 colorField="source"
                 isStack
-                color={(datum: { source: string }) => taskSourceColorMap[datum.source as keyof typeof taskSourceColorMap] || '#1677ff'}
+                color={(datum: { source: string }) =>
+                  taskSourceColorMap[datum.source as keyof typeof taskSourceColorMap] || '#111111'
+                }
               />
             </div>
           </Card>

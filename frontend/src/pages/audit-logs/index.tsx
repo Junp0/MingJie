@@ -54,7 +54,7 @@ const AuditLogsPage: React.FC = () => {
   const [detailLog, setDetailLog] = useState<AuditLogRecord | null>(null);
 
   return (
-    <PageContainer title="审计日志">
+    <PageContainer title="Audit Logs" className="nothingPage" subTitle="统一查看认证、导入、模板和权限变更的审计时间线。">
       <ProTable<AuditLogRecord>
         rowKey="id"
         request={async (params) => {

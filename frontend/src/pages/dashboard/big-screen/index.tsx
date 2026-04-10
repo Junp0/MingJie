@@ -199,6 +199,7 @@ const BigScreen: React.FC = () => {
 
   return (
     <PageContainer
+      className="nothingPage"
       pageHeaderRender={false}
       ghost
     >

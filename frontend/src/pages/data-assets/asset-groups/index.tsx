@@ -506,9 +506,10 @@ const AssetGroups: React.FC = () => {
 
   return (
     <PageContainer
+      className="nothingPage"
       header={{
-        title: '资产分组设置',
-        subTitle: '用树形层级视图梳理分组归属、上下级关系，并支持拖拽调整层级。',
+        title: 'Asset Group Settings',
+        subTitle: '在树形配置视图中管理分组层级、归属关系与结构指标。',
         extra: [
           <Button
             key="reload"
@@ -533,7 +534,6 @@ const AssetGroups: React.FC = () => {
       }}
     >
       {contextHolder}
-
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} md={6}>
           <Card>

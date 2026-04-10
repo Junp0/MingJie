@@ -384,6 +384,9 @@ export const collectDataTypes = (node: CategoryNode): DataTypeItem[] => [...(nod
 
 export const listClassificationTemplates = async (): Promise<ClassificationTemplateSummary[]> => (await fetchTemplates()).map(mapTemplateSummary);
 
+export const listClassificationTemplateRecords = async (): Promise<ClassificationTemplateRecord[]> =>
+  fetchTemplates();
+
 export const getClassificationTemplateById = async (templateId: string): Promise<ClassificationTemplateRecord | null> => {
   const data = await request<BackendTemplate>(`/api/classification-templates/${templateId}`);
   return data ? mapTemplateRecord(data) : null;

@@ -1054,7 +1054,8 @@ const TemplateDetail: React.FC = () => {
     return (
       <PageContainer
         header={{
-          title: '模板详情',
+          title: 'Template Detail',
+          subTitle: '当模板不存在时，可在此返回模板库并重新选择目标模板。',
           onBack: () => navigate('/data-classification/templates'),
         }}
       >
@@ -1072,9 +1073,10 @@ const TemplateDetail: React.FC = () => {
 
   return (
     <PageContainer
+      className="nothingPage"
       header={{
-        title: '模板详情',
-        subTitle: '维护模板基础信息，并配置分类目录、级别、数据类型与识别规则。',
+        title: 'Template Detail',
+        subTitle: '维护模板元数据、分类目录、级别定义、数据类型与识别规则。',
         extra: [
           <Button key="back" onClick={() => navigate('/data-classification/templates')}>
             返回模板列表
@@ -1096,7 +1098,6 @@ const TemplateDetail: React.FC = () => {
       }}
     >
       {contextHolder}
-
       <Card style={{ marginBottom: 24 }} bodyStyle={{ padding: 0 }}>
         <div
           style={{

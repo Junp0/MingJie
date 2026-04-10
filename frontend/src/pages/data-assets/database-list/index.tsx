@@ -985,13 +985,13 @@ const DataAssetList: React.FC = () => {
 
   return (
     <PageContainer
+      className="nothingPage"
       header={{
-        title: '数据资产列表',
-        subTitle: '资产分组以“全部”为根分组统一展示，左侧树节点支持直接新增、编辑和删除子分组。',
+        title: 'Data Asset Catalog',
+        subTitle: '按分组浏览数据资产，查看范围指标，并在树表联动布局中维护资产信息。',
       }}
     >
       {contextHolder}
-
       <Row gutter={[16, 16]} align="top">
         <Col xs={24} xl={5}>
           <Card

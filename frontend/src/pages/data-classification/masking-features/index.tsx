@@ -13,8 +13,8 @@ const MASKING_SCENE_OPTIONS = [
 const MaskingFeatures: React.FC = () => (
   <ProtectionFeatureManager
     featureType="masking"
-    title="脱敏特征"
-    description="维护用于识别字段值是否已脱敏的掩码形态、表达式和样例配置。"
+    title="Masking Features"
+    description="维护用于识别字段值是否已经脱敏的掩码特征、匹配表达式与样例模式。"
     sceneLabel="脱敏特征"
     featurePointLabel="脱敏模式说明"
     sceneOptions={MASKING_SCENE_OPTIONS}

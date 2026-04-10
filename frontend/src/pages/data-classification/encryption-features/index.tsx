@@ -13,8 +13,8 @@ const ENCRYPTION_SCENE_OPTIONS = [
 const EncryptionFeatures: React.FC = () => (
   <ProtectionFeatureManager
     featureType="encryption"
-    title="加密特征"
-    description="维护用于识别字段值是否已加密、编码或摘要化的特征规则。"
+    title="Encryption Features"
+    description="维护用于识别字段值是否已经加密、编码或摘要化的特征规则。"
     featurePointLabel="加密特征点"
     sceneOptions={ENCRYPTION_SCENE_OPTIONS}
     createButtonText="新增加密特征"
