@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import {
+  AutoComplete,
   Badge,
   Button,
   Card,
@@ -31,42 +32,24 @@ import {
 } from 'antd';
 import type { DataNode, TreeProps } from 'antd/es/tree';
 import React, { useEffect, useMemo, useState } from 'react';
+import './index.less';
 import {
   createAssetGroup as createAssetGroupRecord,
+  deleteAssetGroupDepartment,
+  listAssetGroupDepartments,
   listAssetGroups,
   resetAssetGroups,
   saveAssetGroups,
+  type AssetGroup,
+  type AssetGroupDepartmentOption,
+  type AssetGroupFormValues,
 } from '@/services/data-assets/assetGroupStore';
 
 const { Search, TextArea } = Input;
 const { Paragraph, Text, Title } = Typography;
 
-interface AssetGroup {
-  id: string;
-  name: string;
-  parentId: string | null;
-  level: number;
-  description: string;
-  owner: string;
-  department: string;
-  status: 'active' | 'inactive' | 'archived';
-  createTime: string;
-  updateTime: string;
-  databaseCount: number;
-  tableCount: number;
-  fieldCount: number;
-}
-
 interface AssetGroupNode extends AssetGroup {
   children: AssetGroupNode[];
-}
-
-interface AssetGroupFormValues {
-  name: string;
-  description: string;
-  owner: string;
-  department: string;
-  status: AssetGroup['status'];
 }
 
 type GroupModalMode = 'create-root' | 'create-child' | 'edit';
@@ -80,23 +63,23 @@ const LEVEL_META: Record<number, { label: string; color: string }> = {
 
 const MAX_GROUP_LEVEL = 4;
 
-const STATUS_META: Record<AssetGroup['status'], { label: string; color: string }> = {
-  active: { label: '启用', color: 'success' },
-  inactive: { label: '停用', color: 'default' },
-  archived: { label: '归档', color: 'error' },
-};
-
-const DEPARTMENT_OPTIONS = [
-  '数据平台部',
-  '账号中台部',
-  '增长分析部',
-  '安全风控部',
-  '交易平台部',
-  '财务科技部',
-  '基础架构部',
-];
-
 const uniqueArray = (values: string[]) => Array.from(new Set(values));
+
+const getOptionalText = (value?: string) => value?.trim() ?? '';
+
+const getRequestErrorMessage = (error: any, fallbackMessage: string) => {
+  const responseMessage = error?.response?.data?.message;
+  if (Array.isArray(responseMessage) && responseMessage.length) {
+    return responseMessage.join('；');
+  }
+  if (typeof responseMessage === 'string' && responseMessage) {
+    return responseMessage;
+  }
+  if (typeof error?.message === 'string' && error.message) {
+    return error.message;
+  }
+  return fallbackMessage;
+};
 
 const getNowText = () => {
   const now = new Date();
@@ -125,19 +108,17 @@ const filterGroupTree = (
   nodes: AssetGroupNode[],
   keyword: string,
   department: string,
-  status: string,
 ): AssetGroupNode[] =>
   nodes
     .map((node) => {
-      const children = filterGroupTree(node.children, keyword, department, status);
+      const children = filterGroupTree(node.children, keyword, department);
       const matchesKeyword =
         !keyword ||
-        [node.name, node.description, node.owner].some((value) =>
+        [node.name, node.description, node.owner, node.department].some((value) =>
           value.toLowerCase().includes(keyword.toLowerCase()),
         );
       const matchesDepartment = department === 'all' || node.department === department;
-      const matchesStatus = status === 'all' || node.status === status;
-      const selfMatched = matchesKeyword && matchesDepartment && matchesStatus;
+      const selfMatched = matchesKeyword && matchesDepartment;
 
       if (!selfMatched && !children.length) {
         return null;
@@ -294,9 +275,9 @@ const AssetGroups: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const [form] = Form.useForm<AssetGroupFormValues>();
   const [groups, setGroups] = useState<AssetGroup[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<AssetGroupDepartmentOption[]>([]);
   const [keyword, setKeyword] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('user-domain');
   const [expandedKeys, setExpandedKeys] = useState<string[]>(['user-domain', 'trade-domain', 'infra-domain']);
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -304,10 +285,19 @@ const AssetGroups: React.FC = () => {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [targetParentId, setTargetParentId] = useState<string | null>(null);
 
+  const refreshGroupData = async () => {
+    const [nextGroups, nextDepartmentOptions] = await Promise.all([
+      listAssetGroups(),
+      listAssetGroupDepartments(),
+    ]);
+    setGroups(nextGroups);
+    setDepartmentOptions(nextDepartmentOptions);
+  };
+
   const groupTree = useMemo(() => buildGroupTree(groups), [groups]);
   const filteredTree = useMemo(
-    () => filterGroupTree(groupTree, keyword, departmentFilter, statusFilter),
-    [departmentFilter, groupTree, keyword, statusFilter],
+    () => filterGroupTree(groupTree, keyword, departmentFilter),
+    [departmentFilter, groupTree, keyword],
   );
   const flatFilteredGroups = useMemo(() => flattenGroupTree(filteredTree), [filteredTree]);
 
@@ -315,9 +305,10 @@ const AssetGroups: React.FC = () => {
     let cancelled = false;
 
     const loadGroups = async () => {
-      const initialGroups = await listAssetGroups();
+      const [initialGroups, initialDepartmentOptions] = await Promise.all([listAssetGroups(), listAssetGroupDepartments()]);
       if (!cancelled) {
         setGroups(initialGroups);
+        setDepartmentOptions(initialDepartmentOptions);
       }
     };
 
@@ -354,10 +345,48 @@ const AssetGroups: React.FC = () => {
   const totalTableCount = flattenGroupTree(groupTree).reduce((sum, item) => sum + item.tableCount, 0);
   const totalFieldCount = flattenGroupTree(groupTree).reduce((sum, item) => sum + item.fieldCount, 0);
 
-  const departmentOptions = Array.from(new Set(groups.map((group) => group.department))).map((department) => ({
-    value: department,
-    label: department,
+  const departmentSelectOptions = departmentOptions.map((department) => ({
+    value: department.name,
+    label: (
+      <div className="assetGroupDepartmentOption">
+        <div className="assetGroupDepartmentOptionMeta">
+          <div className="assetGroupDepartmentOptionName">{department.name}</div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {department.usageCount ? `已被 ${department.usageCount} 个分组使用` : '未被使用，可删除'}
+          </Text>
+        </div>
+        <Button
+          type="text"
+          size="small"
+          danger
+          className="assetGroupDepartmentOptionDelete"
+          icon={<DeleteOutlined />}
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void handleDeleteDepartmentOption(department);
+          }}
+        />
+      </div>
+    ),
   }));
+
+  const handleDeleteDepartmentOption = async (option: AssetGroupDepartmentOption) => {
+    try {
+      await deleteAssetGroupDepartment(option.id);
+      setDepartmentOptions((current) => current.filter((item) => item.id !== option.id));
+      if (form.getFieldValue('department') === option.name) {
+        form.setFieldValue('department', undefined);
+      }
+      messageApi.success(`已删除归属部门“${option.name}”`);
+    } catch (error) {
+      messageApi.error(getRequestErrorMessage(error, '删除归属部门失败'));
+    }
+  };
 
   const openCreateRootModal = () => {
     setGroupModalMode('create-root');
@@ -368,8 +397,7 @@ const AssetGroups: React.FC = () => {
       name: '',
       description: '',
       owner: '',
-      department: DEPARTMENT_OPTIONS[0],
-      status: 'active',
+      department: undefined,
     });
   };
 
@@ -383,8 +411,7 @@ const AssetGroups: React.FC = () => {
       name: '',
       description: '',
       owner: parent.owner,
-      department: parent.department,
-      status: 'active',
+      department: parent.department || undefined,
     });
   };
 
@@ -397,8 +424,7 @@ const AssetGroups: React.FC = () => {
       name: group.name,
       description: group.description,
       owner: group.owner,
-      department: group.department,
-      status: group.status,
+      department: group.department || undefined,
     });
   };
 
@@ -411,23 +437,21 @@ const AssetGroups: React.FC = () => {
           ? {
               ...group,
               name: values.name.trim(),
-              description: values.description.trim(),
-              owner: values.owner.trim(),
-              department: values.department,
-              status: values.status,
+              description: getOptionalText(values.description),
+              owner: getOptionalText(values.owner),
+              department: getOptionalText(values.department),
               updateTime: getNowText(),
             }
           : group,
       );
       await saveAssetGroups(nextGroups);
-      setGroups(nextGroups);
+      await refreshGroupData();
       messageApi.success('分组已更新');
     } else {
       const parent = targetParentId ? groups.find((group) => group.id === targetParentId) ?? null : null;
       const newGroup = await createAssetGroupRecord(values, parent);
-      const nextGroups = [...groups, newGroup];
-      await saveAssetGroups(nextGroups);
-      setGroups(nextGroups);
+      await saveAssetGroups([...groups, newGroup]);
+      await refreshGroupData();
       setSelectedGroupId(newGroup.id);
       if (targetParentId) {
         setExpandedKeys((current) => uniqueArray([...current, targetParentId]));
@@ -453,17 +477,21 @@ const AssetGroups: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        const nextGroups = groups.filter((item) => item.id !== group.id);
-        void saveAssetGroups(nextGroups);
-        setGroups(nextGroups);
-        setSelectedGroupId(group.parentId ?? '');
-        messageApi.success('分组已删除');
+      onOk: async () => {
+        try {
+          await saveAssetGroups(groups.filter((item) => item.id !== group.id));
+          await refreshGroupData();
+          setSelectedGroupId(group.parentId ?? '');
+          messageApi.success('分组已删除');
+        } catch (error) {
+          messageApi.error(getRequestErrorMessage(error, '删除分组失败'));
+          throw error;
+        }
       },
     });
   };
 
-  const handleTreeDrop: TreeProps['onDrop'] = (info) => {
+  const handleTreeDrop: TreeProps['onDrop'] = async (info) => {
     const dragId = String(info.dragNode.key);
     const targetId = String(info.node.key);
     const targetGroup = groups.find((group) => group.id === targetId);
@@ -494,14 +522,18 @@ const AssetGroups: React.FC = () => {
     }
 
     const nextGroups = moveGroupHierarchy(groups, dragId, nextParentId);
-    saveAssetGroups(nextGroups);
-    setGroups(nextGroups);
-    setExpandedKeys((current) => uniqueArray([...current, ...(nextParentId ? [nextParentId] : [])]));
-    messageApi.success(
-      nextParentId
-        ? `已将“${draggedGroup.name}”调整到“${targetGroup.name}”层级下`
-        : `已将“${draggedGroup.name}”调整为一级分组`,
-    );
+    try {
+      await saveAssetGroups(nextGroups);
+      await refreshGroupData();
+      setExpandedKeys((current) => uniqueArray([...current, ...(nextParentId ? [nextParentId] : [])]));
+      messageApi.success(
+        nextParentId
+          ? `已将“${draggedGroup.name}”调整到“${targetGroup.name}”层级下`
+          : `已将“${draggedGroup.name}”调整为一级分组`,
+      );
+    } catch (error) {
+      messageApi.error(getRequestErrorMessage(error, '调整分组层级失败'));
+    }
   };
 
   return (
@@ -516,10 +548,11 @@ const AssetGroups: React.FC = () => {
             icon={<ReloadOutlined />}
             onClick={async () => {
               const resetGroups = await resetAssetGroups();
+              const resetDepartmentOptions = await listAssetGroupDepartments();
               setGroups(resetGroups);
+              setDepartmentOptions(resetDepartmentOptions);
               setKeyword('');
               setDepartmentFilter('all');
-              setStatusFilter('all');
               setSelectedGroupId('user-domain');
               setExpandedKeys(['user-domain', 'trade-domain', 'infra-domain']);
               messageApi.success('层级视图已重置');
@@ -584,20 +617,7 @@ const AssetGroups: React.FC = () => {
                   style={{ width: '100%' }}
                   value={departmentFilter}
                   onChange={setDepartmentFilter}
-                  options={[{ value: 'all', label: '全部部门' }, ...departmentOptions]}
-                />
-              </Col>
-              <Col span={12}>
-                <Select
-                  style={{ width: '100%' }}
-                  value={statusFilter}
-                  onChange={setStatusFilter}
-                  options={[
-                    { value: 'all', label: '全部状态' },
-                    { value: 'active', label: '启用' },
-                    { value: 'inactive', label: '停用' },
-                    { value: 'archived', label: '归档' },
-                  ]}
+                  options={[{ value: 'all', label: '全部部门' }, ...departmentSelectOptions]}
                 />
               </Col>
             </Row>
@@ -651,21 +671,21 @@ const AssetGroups: React.FC = () => {
                       <Tag color={LEVEL_META[selectedGroup.level]?.color ?? 'blue'}>
                         {LEVEL_META[selectedGroup.level]?.label ?? `L${selectedGroup.level}`}
                       </Tag>
-                      <Badge
-                        status={STATUS_META[selectedGroup.status].color as never}
-                        text={STATUS_META[selectedGroup.status].label}
-                      />
                     </Space>
                     <Paragraph type="secondary" style={{ marginBottom: 8 }}>
-                      {selectedGroup.description}
+                      {selectedGroup.description || '暂无分组说明'}
                     </Paragraph>
                     <Space size={8} wrap>
-                      <Tag bordered={false} color="cyan">
-                        负责人：{selectedGroup.owner}
-                      </Tag>
-                      <Tag bordered={false} color="geekblue">
-                        部门：{selectedGroup.department}
-                      </Tag>
+                      {selectedGroup.owner ? (
+                        <Tag bordered={false} color="cyan">
+                          负责人：{selectedGroup.owner}
+                        </Tag>
+                      ) : null}
+                      {selectedGroup.department ? (
+                        <Tag bordered={false} color="geekblue">
+                          部门：{selectedGroup.department}
+                        </Tag>
+                      ) : null}
                     </Space>
                   </div>
 
@@ -753,9 +773,8 @@ const AssetGroups: React.FC = () => {
                                   {LEVEL_META[child.level]?.label ?? `L${child.level}`}
                                 </Tag>
                               </Space>
-                              <Badge status={STATUS_META[child.status].color as never} text={STATUS_META[child.status].label} />
                             </div>
-                            <Text type="secondary">{child.description}</Text>
+                            <Text type="secondary">{child.description || '暂无分组说明'}</Text>
                             <Space size={12} wrap>
                               <Text type="secondary">库 {child.databaseCount}</Text>
                               <Text type="secondary">表 {child.tableCount}</Text>
@@ -823,7 +842,7 @@ const AssetGroups: React.FC = () => {
               <Form.Item
                 label="负责人"
                 name="owner"
-                rules={[{ required: true, message: '请输入负责人' }]}
+                rules={[{ max: 20, message: '负责人不能超过 20 个字符' }]}
               >
                 <Input placeholder="请输入负责人" maxLength={20} />
               </Form.Item>
@@ -832,32 +851,27 @@ const AssetGroups: React.FC = () => {
               <Form.Item
                 label="所属部门"
                 name="department"
-                rules={[{ required: true, message: '请选择所属部门' }]}
               >
-                <Select options={DEPARTMENT_OPTIONS.map((item) => ({ value: item, label: item }))} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="状态"
-                name="status"
-                rules={[{ required: true, message: '请选择状态' }]}
-              >
-                <Select
-                  options={[
-                    { value: 'active', label: '启用' },
-                    { value: 'inactive', label: '停用' },
-                    { value: 'archived', label: '归档' },
-                  ]}
+                <AutoComplete
+                  allowClear
+                  className="assetGroupDepartmentInput"
+                  options={departmentSelectOptions}
+                  placeholder="可选择或手动输入所属部门"
+                  filterOption={(inputValue, option) =>
+                    String(option?.value ?? '')
+                      .toLowerCase()
+                      .includes(inputValue.trim().toLowerCase())
+                  }
                 />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item label="分组说明" name="description" rules={[{ required: true, message: '请输入分组说明' }]}>
+          <Form.Item
+            label="分组说明"
+            name="description"
+            rules={[{ max: 200, message: '分组说明不能超过 200 个字符' }]}
+          >
             <TextArea rows={4} placeholder="请输入分组说明" maxLength={200} showCount />
           </Form.Item>
         </Form>

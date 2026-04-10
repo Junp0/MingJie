@@ -9,6 +9,11 @@ import { UpdateAssetGroupDto } from './dto/update-asset-group.dto';
 export class AssetGroupsController {
   constructor(private readonly assetGroupsService: AssetGroupsService) {}
 
+  @Get('departments')
+  findDepartments() {
+    return this.assetGroupsService.findDepartments();
+  }
+
   @Get()
   findAll() {
     return this.assetGroupsService.findAll();
@@ -22,6 +27,11 @@ export class AssetGroupsController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateAssetGroupDto) {
     return this.assetGroupsService.update(id, dto);
+  }
+
+  @Delete('departments/:id')
+  removeDepartment(@Param('id') id: string) {
+    return this.assetGroupsService.removeDepartment(id);
   }
 
   @Delete(':id')

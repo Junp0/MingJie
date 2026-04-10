@@ -16,6 +16,7 @@ import {
   Button,
   Card,
   Col,
+  AutoComplete,
   Dropdown,
   Empty,
   Form,
@@ -27,7 +28,6 @@ import {
   Select,
   Space,
   Statistic,
-  Switch,
   Tag,
   Tree,
   Typography,
@@ -38,10 +38,13 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './index.less';
 import {
   createAssetGroup as createAssetGroupRecord,
+  deleteAssetGroupDepartment,
   getAssetGroupPathNames,
   listAssetGroups,
+  listAssetGroupDepartments,
   saveAssetGroups,
   type AssetGroup,
+  type AssetGroupDepartmentOption,
   type AssetGroupFormValues,
 } from '@/services/data-assets/assetGroupStore';
 import {
@@ -69,16 +72,6 @@ type GroupModalMode = 'create-child' | 'edit';
 const MAX_GROUP_LEVEL = 4;
 const ROOT_GROUP_ID = '__all_asset_groups__';
 
-const DEPARTMENT_OPTIONS = [
-  '数据平台部',
-  '账号中台部',
-  '增长分析部',
-  '安全风控部',
-  '交易平台部',
-  '财务科技部',
-  '基础架构部',
-];
-
 const SOURCE_TYPE_ENUM: Record<string, { text: string }> = {
   MySQL: { text: 'MySQL' },
   PostgreSQL: { text: 'PostgreSQL' },
@@ -94,6 +87,27 @@ const SOURCE_TYPE_ENUM: Record<string, { text: string }> = {
 };
 
 const uniqueArray = (values: string[]) => Array.from(new Set(values));
+
+const getOptionalText = (value?: string) => value?.trim() ?? '';
+
+const getGroupMetaText = (department: string, owner: string) => {
+  const parts = [department, owner].filter(Boolean);
+  return parts.length ? parts.join(' / ') : '未设置归属部门或负责人';
+};
+
+const getRequestErrorMessage = (error: any, fallbackMessage: string) => {
+  const responseMessage = error?.response?.data?.message;
+  if (Array.isArray(responseMessage) && responseMessage.length) {
+    return responseMessage.join('；');
+  }
+  if (typeof responseMessage === 'string' && responseMessage) {
+    return responseMessage;
+  }
+  if (typeof error?.message === 'string' && error.message) {
+    return error.message;
+  }
+  return fallbackMessage;
+};
 
 const getNowText = () => {
   const now = new Date();
@@ -142,7 +156,6 @@ const createRootGroupNode = (groups: AssetGroup[]): AssetGroupNode => ({
   description: '展示全部分组下的数据资产信息。',
   owner: '系统',
   department: '全部分组',
-  status: 'active',
   createTime: '',
   updateTime: '',
   databaseCount: 0,
@@ -287,7 +300,7 @@ const buildTreeData = (
               ellipsis
               style={{ display: 'block', maxWidth: '100%', fontSize: 12, marginTop: 4 }}
             >
-              {node.isVirtualRoot ? '汇总全部分组资产' : `${node.department}/${node.owner}`}
+              {node.isVirtualRoot ? '汇总全部分组资产' : getGroupMetaText(node.department, node.owner)}
             </Text>
           </div>
           <Space size={4} style={{ flexShrink: 0, alignSelf: 'flex-start' }}>
@@ -362,6 +375,7 @@ const DataAssetList: React.FC = () => {
   const [form] = Form.useForm<AssetGroupFormValues>();
   const [assetForm] = Form.useForm<DataAssetEditFormValues>();
   const [groups, setGroups] = useState<AssetGroup[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<AssetGroupDepartmentOption[]>([]);
   const [assets, setAssets] = useState<DataAssetRecord[]>([]);
   const [treeKeyword, setTreeKeyword] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>(() => getDefaultSelectedGroupId());
@@ -373,7 +387,6 @@ const DataAssetList: React.FC = () => {
   const [targetParentId, setTargetParentId] = useState<string | null>(null);
   const [assetModalOpen, setAssetModalOpen] = useState(false);
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
-  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
   const tableFilterParamsRef = useRef<Record<string, unknown>>({});
 
   const rootGroupIds = useMemo(
@@ -425,16 +438,9 @@ const DataAssetList: React.FC = () => {
     () => assets.filter((asset) => selectedGroupScopeSet.has(asset.assetGroupId)),
     [assets, selectedGroupScopeSet],
   );
-  const visibleSelectedScopeAssets = useMemo(
-    () =>
-      hideDeletedObjects
-        ? selectedScopeAssets.filter((asset) => !asset.isDeleted)
-        : selectedScopeAssets,
-    [hideDeletedObjects, selectedScopeAssets],
-  );
   const selectedAssetMetrics = useMemo(
-    () => sumAssetMetrics(visibleSelectedScopeAssets),
-    [visibleSelectedScopeAssets],
+    () => sumAssetMetrics(selectedScopeAssets),
+    [selectedScopeAssets],
   );
 
   const directAssetCountByGroupId = useMemo(
@@ -464,15 +470,38 @@ const DataAssetList: React.FC = () => {
     return totals;
   }, [directAssetCountByGroupId, groupTree]);
 
-  const departmentOptions = useMemo(
+  const departmentSelectOptions = useMemo(
     () =>
-      uniqueArray([...DEPARTMENT_OPTIONS, ...groups.map((group) => group.department)]).map(
-        (department) => ({
-          label: department,
-          value: department,
-        }),
-      ),
-    [groups],
+      departmentOptions.map((department) => ({
+        value: department.name,
+        label: (
+          <div className="assetGroupDepartmentOption">
+            <div className="assetGroupDepartmentOptionMeta">
+              <div className="assetGroupDepartmentOptionName">{department.name}</div>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {department.usageCount ? `已被 ${department.usageCount} 个分组使用` : '未被使用，可删除'}
+              </Text>
+            </div>
+            <Button
+              type="text"
+              size="small"
+              danger
+              className="assetGroupDepartmentOptionDelete"
+              icon={<DeleteOutlined />}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void handleDeleteDepartmentOption(department);
+              }}
+            />
+          </div>
+        ),
+      })),
+    [departmentOptions],
   );
 
   const assetGroupPathById = useMemo(
@@ -520,12 +549,14 @@ const DataAssetList: React.FC = () => {
   };
 
   const refreshPageData = async () => {
-    const [nextGroups, nextAssets] = await Promise.all([
+    const [nextGroups, nextAssets, nextDepartmentOptions] = await Promise.all([
       listAssetGroups(),
       listDataAssets(),
+      listAssetGroupDepartments(),
     ]);
     setGroups(nextGroups);
     setAssets(nextAssets);
+    setDepartmentOptions(nextDepartmentOptions);
     setTableVersion((current) => current + 1);
   };
 
@@ -539,6 +570,19 @@ const DataAssetList: React.FC = () => {
     setEditingGroupId(null);
     setTargetParentId(null);
     form.resetFields();
+  };
+
+  const handleDeleteDepartmentOption = async (option: AssetGroupDepartmentOption) => {
+    try {
+      await deleteAssetGroupDepartment(option.id);
+      setDepartmentOptions((current) => current.filter((item) => item.id !== option.id));
+      if (form.getFieldValue('department') === option.name) {
+        form.setFieldValue('department', undefined);
+      }
+      messageApi.success(`已删除归属部门“${option.name}”`);
+    } catch (error) {
+      messageApi.error(getRequestErrorMessage(error, '删除归属部门失败'));
+    }
   };
 
   const closeAssetModal = () => {
@@ -570,10 +614,7 @@ const DataAssetList: React.FC = () => {
       name: '',
       description: '',
       owner: parent.isVirtualRoot ? '' : parent.owner,
-      department: parent.isVirtualRoot
-        ? departmentOptions[0]?.value ?? DEPARTMENT_OPTIONS[0]
-        : parent.department,
-      status: 'active',
+      department: parent.isVirtualRoot ? undefined : parent.department || undefined,
     });
   };
 
@@ -586,8 +627,7 @@ const DataAssetList: React.FC = () => {
       name: group.name,
       description: group.description,
       owner: group.owner,
-      department: group.department,
-      status: group.status,
+      department: group.department || undefined,
     });
   };
 
@@ -606,10 +646,9 @@ const DataAssetList: React.FC = () => {
           ? {
               ...group,
               name: values.name.trim(),
-              description: values.description.trim(),
-              owner: values.owner.trim(),
-              department: values.department,
-              status: values.status,
+              description: getOptionalText(values.description),
+              owner: getOptionalText(values.owner),
+              department: getOptionalText(values.department),
               updateTime: getNowText(),
             }
           : group,
@@ -672,11 +711,16 @@ const DataAssetList: React.FC = () => {
       okText: '确认删除',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => {
-        void saveAssetGroups(groups.filter((item) => item.id !== group.id));
-        void refreshPageData();
-        setSelectedGroupId(group.parentId ?? ROOT_GROUP_ID);
-        messageApi.success('分组已删除');
+      onOk: async () => {
+        try {
+          await saveAssetGroups(groups.filter((item) => item.id !== group.id));
+          await refreshPageData();
+          setSelectedGroupId(group.parentId ?? ROOT_GROUP_ID);
+          messageApi.success('分组已删除');
+        } catch (error) {
+          messageApi.error(getRequestErrorMessage(error, '删除分组失败'));
+          throw error;
+        }
       },
     });
   };
@@ -746,7 +790,7 @@ const DataAssetList: React.FC = () => {
 
   const handleExportList = () => {
     const exportData = filterAssetsByParams(
-      visibleSelectedScopeAssets,
+      selectedScopeAssets,
       tableFilterParamsRef.current,
     );
 
@@ -1130,16 +1174,6 @@ const DataAssetList: React.FC = () => {
                   <Button key="add" type="primary" onClick={handleCreateImportTask}>
                     资产导入
                   </Button>,
-                  <Space key="hide-deleted" size={8}>
-                    <Text type="secondary">隐藏已删除</Text>
-                    <Switch
-                      checked={hideDeletedObjects}
-                      onChange={(checked) => {
-                        setHideDeletedObjects(checked);
-                        actionRef.current?.reload();
-                      }}
-                    />
-                  </Space>,
                   <Button key="export" onClick={handleExportList}>
                     导出清单
                   </Button>,
@@ -1147,7 +1181,7 @@ const DataAssetList: React.FC = () => {
                 request={async (params) => {
                   tableFilterParamsRef.current = params;
 
-                  const filteredData = filterAssetsByParams(visibleSelectedScopeAssets, params);
+                  const filteredData = filterAssetsByParams(selectedScopeAssets, params);
                   return {
                     data: filteredData,
                     success: true,
@@ -1197,7 +1231,6 @@ const DataAssetList: React.FC = () => {
             label="分组描述"
             name="description"
             rules={[
-              { required: true, message: '请输入分组描述' },
               { max: 200, message: '分组描述不能超过 200 个字符' },
             ]}
           >
@@ -1210,7 +1243,6 @@ const DataAssetList: React.FC = () => {
                 label="负责人"
                 name="owner"
                 rules={[
-                  { required: true, message: '请输入负责人' },
                   { max: 20, message: '负责人名称不能超过 20 个字符' },
                 ]}
               >
@@ -1218,22 +1250,24 @@ const DataAssetList: React.FC = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="归属部门" name="department" rules={[{ required: true, message: '请选择归属部门' }]}>
-                <Select options={departmentOptions} placeholder="请选择归属部门" />
+              <Form.Item
+                label="归属部门"
+                name="department"
+              >
+                <AutoComplete
+                  allowClear
+                  className="assetGroupDepartmentInput"
+                  options={departmentSelectOptions}
+                  placeholder="可选择或手动输入归属部门"
+                  filterOption={(inputValue, option) =>
+                    String(option?.value ?? '')
+                      .toLowerCase()
+                      .includes(inputValue.trim().toLowerCase())
+                  }
+                />
               </Form.Item>
             </Col>
           </Row>
-
-          <Form.Item label="分组状态" name="status" rules={[{ required: true, message: '请选择分组状态' }]}>
-            <Select
-              placeholder="请选择分组状态"
-              options={[
-                { label: '启用', value: 'active' },
-                { label: '停用', value: 'inactive' },
-                { label: '归档', value: 'archived' },
-              ]}
-            />
-          </Form.Item>
         </Form>
       </Modal>
 

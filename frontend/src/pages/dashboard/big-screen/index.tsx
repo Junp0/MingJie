@@ -190,9 +190,9 @@ const BigScreen: React.FC = () => {
       color: '#ffb457',
     },
     {
-      title: '归档分组',
-      value: assetGroups.filter((group) => group.status === 'archived').length,
-      description: '归档分组需要确认是否仍有业务引用。',
+      title: '未设部门分组',
+      value: assetGroups.filter((group) => !group.department).length,
+      description: '缺少归属部门会影响资产归口治理。',
       color: '#27d8ff',
     },
   ];

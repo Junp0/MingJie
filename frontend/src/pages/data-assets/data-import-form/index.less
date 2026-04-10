@@ -59,6 +59,27 @@
   backdrop-filter: blur(8px);
 }
 
+.assetGroupTreeSelectDropdown {
+  .ant-select-tree,
+  .ant-select-tree-list,
+  .ant-select-tree-list-holder,
+  .ant-select-tree-list-holder-inner {
+    background: transparent !important;
+  }
+
+  .ant-select-tree-node-content-wrapper.ant-select-tree-node-selected,
+  .ant-select-tree-treenode-selected > .ant-select-tree-node-content-wrapper,
+  .ant-select-tree-node-content-wrapper.ant-select-tree-node-selected:hover,
+  .ant-select-tree-treenode-selected > .ant-select-tree-node-content-wrapper:hover {
+    background: transparent !important;
+  }
+
+  .ant-select-tree-treenode-selected::before,
+  .ant-select-tree-treenode-selected:hover::before {
+    background: transparent !important;
+  }
+}
+
 @media (max-width: 640px) {
   .importActionBar {
     position: static;

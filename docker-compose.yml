@@ -9,7 +9,7 @@ services:
       MYSQL_ROOT_PASSWORD: root_password
       MYSQL_DATABASE: my_ant_design_pro
       MYSQL_USER: app
-      MYSQL_PASSWORD: your_password
+      MYSQL_PASSWORD: app_password
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci

@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CommonStatus } from '@prisma/client';
-import { IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateAssetGroupDto {
   @ApiProperty({ example: '用户数据域' })
@@ -11,6 +10,7 @@ export class CreateAssetGroupDto {
   @ApiPropertyOptional({ example: '核心用户主数据分组' })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   description?: string;
 
   @ApiPropertyOptional()
@@ -27,15 +27,12 @@ export class CreateAssetGroupDto {
   @ApiPropertyOptional({ example: '张三' })
   @IsOptional()
   @IsString()
+  @MaxLength(20)
   owner?: string;
 
   @ApiPropertyOptional({ example: '数据平台部' })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   department?: string;
-
-  @ApiPropertyOptional({ enum: CommonStatus, default: CommonStatus.ACTIVE })
-  @IsOptional()
-  @IsEnum(CommonStatus)
-  status?: CommonStatus;
 }

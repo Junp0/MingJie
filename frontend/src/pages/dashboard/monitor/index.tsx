@@ -41,7 +41,7 @@ const Monitor: React.FC = () => {
 
   const failedImports = importTasks.filter((task) => task.status === 'failed');
   const failedClassificationTasks = classificationTasks.filter((task) => task.status === 'failed');
-  const archivedGroups = assetGroups.filter((group) => group.status === 'archived');
+  const departmentMissingGroups = assetGroups.filter((group) => !group.department);
   const disabledFeatures = [...maskingFeatures, ...encryptionFeatures].filter((feature) => feature.status === 'inactive');
 
   const kpiItems = [
@@ -59,7 +59,7 @@ const Monitor: React.FC = () => {
     },
     {
       label: '待处理异常',
-      value: failedImports.length + failedClassificationTasks.length + archivedGroups.length,
+      value: failedImports.length + failedClassificationTasks.length + departmentMissingGroups.length,
       icon: <AlertOutlined style={{ fontSize: 64 }} />,
       colorClass: 'kpiOrange',
     },
@@ -168,11 +168,11 @@ const Monitor: React.FC = () => {
       countColor: failedClassificationTasks.length ? '#fa541c' : '#52c41a',
     },
     {
-      title: '归档资产分组',
-      count: archivedGroups.length,
-      description: archivedGroups.length ? `待复核：${archivedGroups[0].name}` : '暂无异常',
-      severityClass: archivedGroups.length ? 'riskWarning' : 'riskOk',
-      countColor: archivedGroups.length ? '#faad14' : '#52c41a',
+      title: '未设部门分组',
+      count: departmentMissingGroups.length,
+      description: departmentMissingGroups.length ? `待补充：${departmentMissingGroups[0].name}` : '暂无异常',
+      severityClass: departmentMissingGroups.length ? 'riskWarning' : 'riskOk',
+      countColor: departmentMissingGroups.length ? '#faad14' : '#52c41a',
     },
     {
       title: '停用治理特征',
@@ -192,7 +192,7 @@ const Monitor: React.FC = () => {
       className="monitorPage"
       header={{
         title: 'Operations Monitor',
-        subTitle: '集中监控运行任务、失败流程、归档分组与停用治理特征。',
+        subTitle: '集中监控运行任务、失败流程、部门缺失分组与停用治理特征。',
       }}
     >
       {/* KPI Cards */}

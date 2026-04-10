@@ -172,6 +172,20 @@ const mapTaskDataTypeToLabel = (value?: ClassificationTaskDataType) => {
   return "-";
 };
 
+const isValidIpv4Address = (value: string) => {
+  const segments = value.split(".");
+  if (segments.length !== 4) return false;
+
+  return segments.every((segment) => {
+    if (!/^\d+$/.test(segment)) return false;
+    const numericValue = Number(segment);
+    return numericValue >= 0 && numericValue <= 255;
+  });
+};
+
+const isValidPort = (value?: number | null) =>
+  Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
+
 const findTreeNodeTitle = (
   nodes: Array<{ value: string; title: string; children: any[] }>,
   targetValue?: string
@@ -231,6 +245,45 @@ const DataImportForm: React.FC = () => {
   const usernameValue = Form.useWatch("username", form);
   const passwordValue = Form.useWatch("password", form);
   const assetGroupIdValue = Form.useWatch("assetGroupId", form);
+
+  const canReuseStoredPassword = Boolean(
+    isEditMode &&
+      editId &&
+      (!passwordValue?.trim() || passwordValue?.trim() === MASKED_PASSWORD)
+  );
+
+  const currentConnectionFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        sourceType,
+        databaseType: databaseTypeValue?.trim?.() ?? databaseTypeValue,
+        ipAddress: ipAddressValue?.trim() ?? "",
+        port: typeof portValue === "number" ? portValue : null,
+        username: usernameValue?.trim() ?? "",
+        password: canReuseStoredPassword
+          ? MASKED_PASSWORD
+          : passwordValue?.trim() ?? "",
+        taskId: canReuseStoredPassword ? editId : undefined,
+      }),
+    [
+      canReuseStoredPassword,
+      databaseTypeValue,
+      editId,
+      ipAddressValue,
+      passwordValue,
+      portValue,
+      sourceType,
+      usernameValue,
+    ]
+  );
+
+  const canTestConnection =
+    sourceType === "database" &&
+    Boolean(databaseTypeValue) &&
+    Boolean(ipAddressValue?.trim()) &&
+    isValidPort(portValue) &&
+    Boolean(usernameValue?.trim()) &&
+    Boolean(passwordValue?.trim() || canReuseStoredPassword);
 
   const selectedExistingTask = useMemo(
     () =>
@@ -547,11 +600,7 @@ const DataImportForm: React.FC = () => {
     });
   };
 
-  const handleDiscoverDatabases = async (options?: {
-    silent?: boolean;
-    fingerprint?: string;
-  }) => {
-    const silent = options?.silent ?? false;
+  const handleDiscoverDatabases = async () => {
     const values = form.getFieldsValue([
       "sourceType",
       "databaseType",
@@ -562,13 +611,12 @@ const DataImportForm: React.FC = () => {
     ]) as Partial<ImportWorkflowFormValues>;
 
     if (values.sourceType !== "database") {
-      if (!silent) {
-        messageApi.warning("当前只有数据库类型支持自动发现数据库列表。");
-      }
+      messageApi.warning("当前只有数据库类型支持自动发现数据库列表。");
       return;
     }
 
     const ipAddress = values.ipAddress?.trim();
+    const port = values.port;
     const username = values.username?.trim();
     const password = values.password?.trim();
     const canReuseStoredPassword = Boolean(
@@ -578,33 +626,31 @@ const DataImportForm: React.FC = () => {
     if (
       !values.databaseType ||
       !ipAddress ||
-      typeof values.port !== "number" ||
+      !isValidPort(port) ||
       !username ||
       (!password && !canReuseStoredPassword)
     ) {
-      if (!silent) {
-        await form.validateFields([
-          "databaseType",
-          "ipAddress",
-          "port",
-          "username",
-          "password",
-        ]);
-      }
+      await form.validateFields([
+        "databaseType",
+        "ipAddress",
+        "port",
+        "username",
+        "password",
+      ]);
       return;
     }
 
+    const validatedPort = Number(port);
+
     setDiscoveringDatabases(true);
     setConnectionTestStatus("testing");
-    setConnectionTestMessage(
-      silent ? "正在自动测试连通性..." : "正在测试连通性..."
-    );
+    setConnectionTestMessage("正在测试连通性...");
 
     try {
       const databases = await discoverImportDatabases({
         databaseType: values.databaseType,
         ipAddress,
-        port: values.port,
+        port: validatedPort,
         username,
         ...(canReuseStoredPassword
           ? { taskId: editId }
@@ -619,92 +665,35 @@ const DataImportForm: React.FC = () => {
           ? `连接成功，已发现 ${databases.length} 个可导入数据库`
           : "连接成功，但未发现可导入数据库"
       );
-      setLastTestedFingerprint(
-        options?.fingerprint ?? autoConnectionFingerprint
+      setLastTestedFingerprint(currentConnectionFingerprint);
+      messageApi.success(
+        databases.length
+          ? `连接成功，已发现 ${databases.length} 个可导入数据库`
+          : "连接成功，但未发现可导入数据库"
       );
-
-      if (!silent) {
-        messageApi.success(
-          databases.length
-            ? `连接成功，已发现 ${databases.length} 个可导入数据库`
-            : "连接成功，但未发现可导入数据库"
-        );
-      }
     } catch (error) {
       console.error(error);
       setDatabaseOptions([]);
       setConnectionTestStatus("error");
       setConnectionTestMessage("连接失败，无法获取数据库列表");
-      setLastTestedFingerprint(
-        options?.fingerprint ?? autoConnectionFingerprint
-      );
-      if (!silent) {
-        messageApi.error("连接失败，无法获取数据库列表");
-      }
+      setLastTestedFingerprint(currentConnectionFingerprint);
+      messageApi.error("连接失败，无法获取数据库列表");
     } finally {
       setDiscoveringDatabases(false);
     }
   };
 
-  const autoConnectionFingerprint = useMemo(() => {
-    if (sourceType !== "database") return "";
-
-    const ipAddress = ipAddressValue?.trim();
-    const username = usernameValue?.trim();
-    const password = passwordValue?.trim();
-    const canReuseStoredPassword = Boolean(
-      isEditMode && editId && (!password || password === MASKED_PASSWORD)
-    );
-
-    if (
-      !databaseTypeValue ||
-      !ipAddress ||
-      typeof portValue !== "number" ||
-      !username ||
-      (!password && !canReuseStoredPassword)
-    ) {
-      return "";
-    }
-
-    return JSON.stringify({
-      sourceType,
-      databaseType: databaseTypeValue,
-      ipAddress,
-      port: portValue,
-      username,
-      password: canReuseStoredPassword ? MASKED_PASSWORD : password,
-      taskId: canReuseStoredPassword ? editId : undefined,
-    });
-  }, [
-    databaseTypeValue,
-    editId,
-    ipAddressValue,
-    isEditMode,
-    passwordValue,
-    portValue,
-    sourceType,
-    usernameValue,
-  ]);
-
   useEffect(() => {
-    if (
-      !autoConnectionFingerprint ||
-      autoConnectionFingerprint === lastTestedFingerprint
-    ) {
+    if (!lastTestedFingerprint || currentConnectionFingerprint === lastTestedFingerprint) {
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      void handleDiscoverDatabases({
-        silent: true,
-        fingerprint: autoConnectionFingerprint,
-      });
-    }, 500);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [autoConnectionFingerprint, lastTestedFingerprint]);
+    setConnectionTestStatus("idle");
+    setConnectionTestMessage("");
+    setLastTestedFingerprint("");
+    setDatabaseOptions([]);
+    form.setFieldsValue({ databaseName: undefined });
+  }, [currentConnectionFingerprint, form, lastTestedFingerprint]);
 
   const validateStepOne = async () => {
     const currentScheduleMode = form.getFieldValue("scheduleMode");
@@ -1034,49 +1023,98 @@ const DataImportForm: React.FC = () => {
                       placeholder="请选择资产分组"
                       treeData={assetGroupOptions}
                       treeNodeFilterProp="title"
+                      popupClassName="assetGroupTreeSelectDropdown"
                     />
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Row gutter={20}>
-                <Col xs={24} md={16}>
+              <Row gutter={20} align="bottom">
+                <Col xs={24} md={7}>
                   <Form.Item
                     label="接入地址"
                     name="ipAddress"
-                    rules={[{ required: true, message: "请输入接入地址" }]}
+                    validateTrigger="onBlur"
+                    rules={[
+                      { required: true, message: "请输入接入地址" },
+                      {
+                        validator: (_, value) => {
+                          if (!value?.trim()) {
+                            return Promise.resolve();
+                          }
+                          if (isValidIpv4Address(value.trim())) {
+                            return Promise.resolve();
+                          }
+                          return Promise.reject(new Error("请输入合法的IP地址"));
+                        },
+                      },
+                    ]}
                   >
                     <Input placeholder="例如：127.0.0.1" />
                   </Form.Item>
                 </Col>
-                <Col xs={24} md={8}>
+                <Col xs={24} md={4}>
                   <Form.Item
                     label="端口号"
-                    required
+                    name="port"
+                    validateTrigger="onBlur"
+                    rules={[
+                      { required: true, message: "请输入端口号" },
+                      {
+                        validator: (_, value) => {
+                          if (value === undefined || value === null || value === "") {
+                            return Promise.resolve();
+                          }
+                          if (isValidPort(value)) {
+                            return Promise.resolve();
+                          }
+                          return Promise.reject(
+                            new Error("请输入 1-65535 之间的端口号")
+                          );
+                        },
+                      },
+                    ]}
                   >
-                    <Space.Compact block>
-                      <Form.Item
-                        name="port"
-                        noStyle
-                        rules={[{ required: true, message: "请输入端口号" }]}
-                      >
-                        <InputNumber
-                          min={0}
-                          max={65535}
-                          style={{ width: "100%" }}
-                        />
-                      </Form.Item>
-                      <Button
-                        size="small"
-                        icon={<SyncOutlined />}
-                        loading={discoveringDatabases}
-                        onClick={() => {
-                          void handleDiscoverDatabases();
-                        }}
-                      >
-                        测试
-                      </Button>
-                    </Space.Compact>
+                    <InputNumber min={1} max={65535} style={{ width: "100%" }} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={5}>
+                  <Form.Item
+                    label="访问账号"
+                    name="username"
+                    rules={[{ required: true, message: "请输入访问账号" }]}
+                  >
+                    <Input placeholder="请输入访问账号" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={5}>
+                  <Form.Item
+                    label="访问密码"
+                    name="password"
+                    rules={[{ required: true, message: "请输入访问密码" }]}
+                  >
+                    <Input.Password
+                      placeholder={
+                        isEditMode
+                          ? "已保存访问密码，如需修改请直接输入新密码"
+                          : "请输入访问密码"
+                      }
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={3}>
+                  <Form.Item label="测试连接">
+                    <Button
+                      block
+                      icon={<SyncOutlined />}
+                      loading={discoveringDatabases}
+                      disabled={!canTestConnection}
+                      onClick={() => {
+                        void handleDiscoverDatabases();
+                      }}
+                    >
+                      测试
+                    </Button>
                   </Form.Item>
                 </Col>
               </Row>
@@ -1095,33 +1133,6 @@ const DataImportForm: React.FC = () => {
                   </Text>
                 </div>
               ) : null}
-
-              <Row gutter={20}>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="访问账号"
-                    name="username"
-                    rules={[{ required: true, message: "请输入访问账号" }]}
-                  >
-                    <Input placeholder="例如：importer" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="访问密码"
-                    name="password"
-                    rules={[{ required: true, message: "请输入访问密码" }]}
-                  >
-                    <Input.Password
-                      placeholder={
-                        isEditMode
-                          ? "已保存访问密码，如需修改请直接输入新密码"
-                          : "请输入访问密码"
-                      }
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
 
               <Form.Item
                 label="数据库名 / Schema"

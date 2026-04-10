@@ -1,8 +1,6 @@
 import { request } from '@/services/request';
 import { formatBeijingDateTime } from '@/utils/datetime';
 
-export type AssetGroupStatus = 'active' | 'inactive' | 'archived';
-
 export interface AssetGroup {
   id: string;
   name: string;
@@ -11,7 +9,6 @@ export interface AssetGroup {
   description: string;
   owner: string;
   department: string;
-  status: AssetGroupStatus;
   createTime: string;
   updateTime: string;
   databaseCount: number;
@@ -21,10 +18,16 @@ export interface AssetGroup {
 
 export interface AssetGroupFormValues {
   name: string;
-  description: string;
-  owner: string;
-  department: string;
-  status: AssetGroupStatus;
+  description?: string;
+  owner?: string;
+  department?: string;
+}
+
+export interface AssetGroupDepartmentOption {
+  id: string;
+  name: string;
+  usageCount: number;
+  inUse: boolean;
 }
 
 type BackendAssetGroup = {
@@ -35,21 +38,20 @@ type BackendAssetGroup = {
   description?: string | null;
   owner?: string | null;
   department?: string | null;
-  status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
   createdAt?: string;
   updatedAt?: string;
 };
 
-const statusMap: Record<NonNullable<BackendAssetGroup['status']>, AssetGroupStatus> = {
-  ACTIVE: 'active',
-  INACTIVE: 'inactive',
-  ARCHIVED: 'archived',
+type BackendAssetGroupDepartment = {
+  id: string;
+  name: string;
+  usageCount: number;
+  inUse: boolean;
 };
 
-const reverseStatusMap: Record<AssetGroupStatus, BackendAssetGroup['status']> = {
-  active: 'ACTIVE',
-  inactive: 'INACTIVE',
-  archived: 'ARCHIVED',
+const normalizeOptionalInput = (value?: string) => {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
 };
 
 const mapAssetGroup = (item: BackendAssetGroup): AssetGroup => ({
@@ -60,7 +62,6 @@ const mapAssetGroup = (item: BackendAssetGroup): AssetGroup => ({
   description: item.description ?? '',
   owner: item.owner ?? '',
   department: item.department ?? '',
-  status: item.status ? statusMap[item.status] : 'active',
   createTime: formatBeijingDateTime(item.createdAt),
   updateTime: formatBeijingDateTime(item.updatedAt),
   databaseCount: 0,
@@ -70,10 +71,9 @@ const mapAssetGroup = (item: BackendAssetGroup): AssetGroup => ({
 
 const toUpdatePayload = (group: AssetGroup) => ({
   name: group.name.trim(),
-  description: group.description.trim(),
-  owner: group.owner.trim(),
-  department: group.department.trim(),
-  status: reverseStatusMap[group.status],
+  description: normalizeOptionalInput(group.description),
+  owner: normalizeOptionalInput(group.owner),
+  department: normalizeOptionalInput(group.department),
   parentId: group.parentId,
   level: group.level,
 });
@@ -123,7 +123,6 @@ export const saveAssetGroups = async (groups: AssetGroup[]): Promise<AssetGroup[
       current.description !== group.description ||
       current.owner !== group.owner ||
       current.department !== group.department ||
-      current.status !== group.status ||
       current.parentId !== group.parentId ||
       current.level !== group.level;
 
@@ -150,10 +149,9 @@ export const createAssetGroup = async (
     method: 'POST',
     data: {
       name: values.name.trim(),
-      description: values.description.trim(),
-      owner: values.owner.trim(),
-      department: values.department.trim(),
-      status: reverseStatusMap[values.status],
+      description: normalizeOptionalInput(values.description),
+      owner: normalizeOptionalInput(values.owner),
+      department: normalizeOptionalInput(values.department),
       parentId: parent?.id,
       level: parent ? parent.level + 1 : 1,
     },
@@ -178,7 +176,6 @@ export const getAssetGroupPathNames = (groups: AssetGroup[], groupId: string): s
 export const listAssetGroupSelectOptions = async (): Promise<Array<{ value: string; label: string }>> => {
   const groups = await listAssetGroups();
   return groups
-    .filter((group) => group.status !== 'archived')
     .map((group) => ({
       value: group.id,
       label: getAssetGroupPathNames(groups, group.id).join(' / '),
@@ -193,10 +190,9 @@ interface TreeSelectNode {
 
 export const listAssetGroupTreeSelectOptions = async (): Promise<TreeSelectNode[]> => {
   const groups = await listAssetGroups();
-  const activeGroups = groups.filter((group) => group.status !== 'archived');
 
   const buildTree = (parentId: string | null): TreeSelectNode[] =>
-    activeGroups
+    groups
       .filter((group) => group.parentId === parentId)
       .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
       .map((group) => ({
@@ -206,4 +202,14 @@ export const listAssetGroupTreeSelectOptions = async (): Promise<TreeSelectNode[
       }));
 
   return buildTree(null);
+};
+
+export const listAssetGroupDepartments = async (): Promise<AssetGroupDepartmentOption[]> => {
+  return request<BackendAssetGroupDepartment[]>('/api/asset-groups/departments');
+};
+
+export const deleteAssetGroupDepartment = async (departmentId: string): Promise<void> => {
+  await request(`/api/asset-groups/departments/${departmentId}`, {
+    method: 'DELETE',
+  });
 };

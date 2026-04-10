@@ -48,7 +48,7 @@ const getAllPermissionKeys = (permissions: PermissionDefinition[]): string[] =>
   permissions.map((p) => p.code);
 
 const RoleManagementPage: React.FC = () => {
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
   const [form] = Form.useForm();

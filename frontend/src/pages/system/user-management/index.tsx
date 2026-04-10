@@ -21,7 +21,7 @@ const STATUS_MAP: Record<UserStatus, { text: string; color: string }> = {
 };
 
 const UserManagementPage: React.FC = () => {
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType | null>(null);
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
