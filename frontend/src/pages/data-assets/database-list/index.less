@@ -1,0 +1,36 @@
+.assetGroupTree {
+  :global(.ant-tree-node-content-wrapper) {
+    padding: 0 !important;
+    background: transparent;
+  }
+
+  :global(.ant-tree-switcher) {
+    align-self: flex-start;
+    margin-top: 12px;
+  }
+}
+
+.assetGroupTreeNode {
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.assetGroupTreeNode:hover {
+  background: #f7f7f7;
+  border-color: #e6e6e6;
+}
+
+.assetGroupTreeNodeSelected {
+  background: #f2f2f2;
+  border-color: #e0e0e0;
+}
+
+.assetGroupTreeNodeSelected:hover {
+  background: #ededed;
+  border-color: #d9d9d9;
+}

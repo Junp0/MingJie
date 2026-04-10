@@ -35,6 +35,7 @@ import {
 } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import './index.less';
 import {
   createAssetGroup as createAssetGroupRecord,
   getAssetGroupPathNames,
@@ -218,12 +219,15 @@ const sumAssetMetrics = (assets: DataAssetRecord[]) =>
 const buildTreeData = (
   nodes: AssetGroupNode[],
   scopedAssetCountByGroupId: Record<string, number>,
+  selectedGroupId: string | null,
+  onSelectNode: (groupId: string) => void,
   onCreateChild: (group: AssetGroupNode) => void,
   onEdit: (group: AssetGroupNode) => void,
   onDelete: (group: AssetGroupNode) => void,
 ): DataNode[] =>
   nodes.map((node) => {
     const scopedCount = scopedAssetCountByGroupId[node.id] ?? 0;
+    const isSelected = node.id === selectedGroupId;
     const actionItems = node.isVirtualRoot
       ? [
           {
@@ -255,13 +259,23 @@ const buildTreeData = (
       key: node.id,
       title: (
         <div
+          className={`assetGroupTreeNode${isSelected ? ' assetGroupTreeNodeSelected' : ''}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => onSelectNode(node.id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onSelectNode(node.id);
+            }
+          }}
           style={{
             display: 'flex',
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 8,
             width: '100%',
-            paddingRight: 4,
+            padding: '12px 14px',
           }}
         >
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -332,6 +346,8 @@ const buildTreeData = (
       children: buildTreeData(
         node.children,
         scopedAssetCountByGroupId,
+        selectedGroupId,
+        onSelectNode,
         onCreateChild,
         onEdit,
         onDelete,
@@ -1026,24 +1042,21 @@ const DataAssetList: React.FC = () => {
 
             {filteredTree.length ? (
               <Tree
+                className="assetGroupTree"
                 showLine
                 blockNode
+                selectable={false}
                 treeData={buildTreeData(
                   filteredTree,
                   scopedAssetCountByGroupId,
+                  selectedGroupId,
+                  setSelectedGroupId,
                   openCreateChildModal,
                   openEditModal,
                   handleDeleteGroup,
                 )}
-                selectedKeys={selectedGroupId ? [selectedGroupId] : []}
                 expandedKeys={treeKeyword ? allFilteredKeys : expandedKeys}
                 onExpand={(keys) => setExpandedKeys(keys as string[])}
-                onSelect={(keys) => {
-                  const nextSelectedKey = keys[0];
-                  if (typeof nextSelectedKey === 'string') {
-                    setSelectedGroupId(nextSelectedKey);
-                  }
-                }}
               />
             ) : (
               <Empty description="未找到匹配的资产分组" image={Empty.PRESENTED_IMAGE_SIMPLE} />
