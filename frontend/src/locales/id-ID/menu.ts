@@ -8,8 +8,6 @@ export default {
   'menu.register': 'Pendaftaran',
   'menu.register-result': 'Hasil Pendaftaran',
   'menu.dashboard': 'Dasbor',
-  'menu.dashboard.analysis': 'Analisis',
-  'menu.dashboard.monitor': 'Monitor',
   'menu.dashboard.workplace': 'Workplace',
   'menu.exception.403': '403',
   'menu.exception.404': '404',

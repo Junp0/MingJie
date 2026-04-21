@@ -8,15 +8,15 @@ const Settings: ProLayoutProps & {
   logo?: string;
 } = {
   navTheme: 'light',
-  colorPrimary: '#111111',
-  layout: 'side',
+  colorPrimary: '#1890ff',
+  layout: 'mix',
   contentWidth: 'Fluid',
-  fixedHeader: true,
+  fixedHeader: false,
   fixSiderbar: true,
   colorWeak: false,
   title: 'MINGJIE DCG',
   pwa: true,
-  logo: '',
+  logo: '/logo.svg',
   iconfontUrl: '',
   token: {
     // 参见ts声明，demo 见文档，通过token 修改样式

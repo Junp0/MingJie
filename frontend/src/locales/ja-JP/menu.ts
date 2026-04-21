@@ -8,8 +8,6 @@ export default {
   'menu.register': '登録',
   'menu.register-result': '登録結果',
   'menu.dashboard': 'ダッシュボード',
-  'menu.dashboard.analysis': '分析',
-  'menu.dashboard.monitor': 'モニター',
   'menu.dashboard.workplace': '職場',
   'menu.exception.403': '403',
   'menu.exception.404': '404',

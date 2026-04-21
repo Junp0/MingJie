@@ -8,8 +8,6 @@ export default {
   'menu.register': 'Registro',
   'menu.register-result': 'Resultado de registro',
   'menu.dashboard': 'Dashboard',
-  'menu.dashboard.analysis': 'Análise',
-  'menu.dashboard.monitor': 'Monitor',
   'menu.dashboard.workplace': 'Ambiente de Trabalho',
   'menu.exception.403': '403',
   'menu.exception.404': '404',

@@ -1,9 +1,6 @@
 export default {
   'menu.login': 'Login',
-  'menu.dashboard': 'Platform Home',
-  'menu.dashboard.analysis': 'Analysis',
-  'menu.dashboard.monitor': 'Monitor',
-  'menu.dashboard.big-screen': 'Global Screen',
+  'menu.dashboard': 'Dashboard',
   'menu.data-overview': 'Data Overview',
   'menu.data-overview.full-data-list': 'Full Data List',
   'menu.data-overview.table-data-list': 'Table Data List',

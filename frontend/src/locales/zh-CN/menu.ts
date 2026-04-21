@@ -1,9 +1,6 @@
 export default {
   'menu.login': '登录',
-  'menu.dashboard': '平台首页',
-  'menu.dashboard.analysis': '分析页',
-  'menu.dashboard.monitor': '监控页',
-  'menu.dashboard.big-screen': '全局大屏',
+  'menu.dashboard': '仪表盘',
   'menu.data-overview': '数据概览',
   'menu.data-overview.full-data-list': '全量数据列表',
   'menu.data-overview.table-data-list': '库表数据列表',

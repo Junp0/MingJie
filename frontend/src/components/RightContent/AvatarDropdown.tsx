@@ -25,20 +25,13 @@ const useStyles = createStyles(({ token }) => {
   return {
     action: {
       display: 'flex',
-      height: '40px',
+      height: '48px',
       marginLeft: 'auto',
       overflow: 'hidden',
       alignItems: 'center',
-      gap: '8px',
-      padding: '0 14px',
+      padding: '0 8px',
       cursor: 'pointer',
-      border: '1px solid var(--nd-border-visible)',
-      borderRadius: '999px',
-      fontFamily: '"Space Mono", "JetBrains Mono", monospace',
-      fontSize: '11px',
-      fontWeight: 700,
-      letterSpacing: '0.08em',
-      textTransform: 'uppercase',
+      borderRadius: token.borderRadius,
       '&:hover': {
         backgroundColor: token.colorBgTextHover,
       },

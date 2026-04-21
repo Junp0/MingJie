@@ -7,13 +7,7 @@ export const SelectLang: React.FC = () => {
   return (
     <UmiSelectLang
       style={{
-        padding: 6,
-        border: '1px solid var(--nd-border-visible)',
-        borderRadius: 999,
-        fontFamily: '"Space Mono", "JetBrains Mono", monospace',
-        fontSize: 11,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
+        padding: 4,
       }}
     />
   );
@@ -27,14 +21,9 @@ export const Question: React.FC = () => {
       rel="noreferrer"
       style={{
         display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: 36,
-        height: 36,
-        border: '1px solid var(--nd-border-visible)',
-        borderRadius: 999,
-        fontSize: '16px',
-        color: 'var(--nd-text-secondary)',
+        padding: '4px',
+        fontSize: '18px',
+        color: 'inherit',
       }}
     >
       <QuestionCircleOutlined />

@@ -1,0 +1,296 @@
+.dashboardPage {
+  --panel-border: #e8edf3;
+  --panel-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  padding: 8px 0 28px;
+
+  :global(.ant-card) {
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    box-shadow: var(--panel-shadow);
+    background: #fff;
+  }
+
+  :global(.ant-card-head) {
+    min-height: 46px;
+    border-bottom: 1px solid #eef2f7;
+  }
+
+  :global(.ant-card-head-title) {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+.sectionRow {
+  margin-bottom: 14px;
+}
+
+.panelCard {
+  height: 100%;
+}
+
+.topStatCard {
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.95;
+  }
+
+  :global(.ant-card-body) {
+    position: relative;
+    padding: 20px 22px;
+  }
+}
+
+.toneBlue::before {
+  background: linear-gradient(135deg, rgba(84, 155, 255, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.toneAmber::before {
+  background: linear-gradient(135deg, rgba(255, 197, 103, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.toneRose::before {
+  background: linear-gradient(135deg, rgba(255, 159, 176, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.toneMint::before {
+  background: linear-gradient(135deg, rgba(110, 220, 230, 0.12), rgba(255, 255, 255, 0.82));
+}
+
+.topStatValue {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.topStatTitle {
+  margin-top: 10px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.topStatDetail {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.levelTrack {
+  display: flex;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf2f8;
+}
+
+.levelTrackSegment {
+  height: 100%;
+}
+
+.levelLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 14px;
+  margin-top: 16px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f7f9fc;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.legendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.legendLabel {
+  color: #546173;
+}
+
+.progressGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.progressCard {
+  padding: 14px 14px 12px;
+  border: 1px solid #edf2f7;
+  border-radius: 16px;
+  background: #f9fbfd;
+}
+
+.progressCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.progressCardTitle {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.progressCardValue {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.progressCardDesc {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.todoList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.todoLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.todoCard {
+  padding: 16px;
+  border: 1px solid #edf2f7;
+  border-radius: 16px;
+}
+
+.todoRose {
+  background: linear-gradient(135deg, rgba(255, 237, 242, 0.7), #fff);
+}
+
+.todoAmber {
+  background: linear-gradient(135deg, rgba(255, 246, 227, 0.7), #fff);
+}
+
+.todoMint {
+  background: linear-gradient(135deg, rgba(239, 252, 247, 0.7), #fff);
+}
+
+.todoCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.todoCardTitle {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.todoCardValue {
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.todoCardDesc {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.bottomCard {
+  :global(.ant-card-body) {
+    padding-top: 18px;
+  }
+}
+
+.bottomCardHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.bottomCardIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #4f8fff;
+  font-size: 15px;
+}
+
+.bottomCardTitle {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bottomCardBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.bottomCardRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px dashed #edf2f7;
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+}
+
+.bottomCardLabel {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.bottomCardValue {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .topStatValue {
+    font-size: 22px;
+  }
+
+  .progressCardHead,
+  .todoCardHead,
+  .bottomCardRow {
+    align-items: flex-start;
+  }
+}

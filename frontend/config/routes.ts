@@ -36,30 +36,19 @@ export default [
     path: '/dashboard',
     name: 'dashboard',
     icon: 'dashboard',
-    routes: [
-      {
-        path: '/dashboard',
-        redirect: '/dashboard/analysis',
-      },
-      {
-        name: 'analysis',
-        icon: 'smile',
-        path: '/dashboard/analysis',
-        component: './dashboard/analysis',
-      },
-      {
-        name: 'monitor',
-        icon: 'smile',
-        path: '/dashboard/monitor',
-        component: './dashboard/monitor',
-      },
-      {
-        name: 'big-screen',
-        icon: 'fundProjectionScreen',
-        path: '/dashboard/big-screen',
-        component: './dashboard/big-screen',
-      },
-    ],
+    component: './dashboard',
+  },
+  {
+    path: '/dashboard/analysis',
+    redirect: '/dashboard',
+  },
+  {
+    path: '/dashboard/monitor',
+    redirect: '/dashboard',
+  },
+  {
+    path: '/dashboard/big-screen',
+    redirect: '/dashboard',
   },
   {
     path: '/data-overview',
@@ -221,7 +210,7 @@ export default [
   },
   {
     path: '/',
-    redirect: '/dashboard/analysis',
+    redirect: '/dashboard',
   },
   {
     component: '404',

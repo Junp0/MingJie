@@ -1,12 +1,23 @@
+import { LinkOutlined } from '@ant-design/icons';
 import type { Settings as LayoutSettings } from '@ant-design/pro-components';
+import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
-import { history } from '@umijs/max';
-import { Modal } from 'antd';
+import { history, Link } from '@umijs/max';
 import React from 'react';
-import { currentUser as queryCurrentUser, outLogin } from '@/services/ant-design-pro/api';
+import {
+  AvatarDropdown,
+  AvatarName,
+  Footer,
+  Question,
+  SelectLang,
+} from '@/components';
+import { currentUser as queryCurrentUser } from '@/services/ant-design-pro/api';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
 import '@ant-design/v5-patch-for-react-19';
+
+const isDev =
+  process.env.NODE_ENV === 'development' || process.env.CI;
 const loginPath = '/user/login';
 
 /**
@@ -48,109 +59,80 @@ export async function getInitialState(): Promise<{
 // ProLayout 支持的api https://procomponents.ant.design/components/layout
 export const layout: RunTimeLayoutConfig = ({
   initialState,
+  setInitialState,
 }) => {
-  const handleLogout = () => {
-    Modal.confirm({
-      title: '确认退出登录',
-      content: '退出后将返回登录页。',
-      okText: '退出登录',
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await outLogin();
-        } catch (_error) {
-          // Ignore logout request failures and continue clearing local state.
-        }
-        localStorage.removeItem('token');
-        history.replace(loginPath);
-      },
-    });
-  };
-
   return {
-    menuFooterRender: (props) => {
-      if (!initialState?.currentUser) {
-        return null;
-      }
-
-      if (props?.collapsed) {
-        return (
-          <div
-            style={{
-              margin: '12px',
-              padding: '10px 0',
-              borderTop: '1px solid var(--nd-border)',
-              color: 'var(--nd-text-display)',
-              fontFamily: '"Space Mono", "JetBrains Mono", monospace',
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: '0.08em',
-              textAlign: 'center',
-              cursor: 'pointer',
-            }}
-            onClick={handleLogout}
-          >
-            A
-          </div>
-        );
-      }
-
-      return (
-        <div
-          style={{
-            margin: '12px',
-            padding: '14px 16px',
-            borderTop: '1px solid var(--nd-border)',
-            color: 'var(--nd-text-primary)',
-            cursor: 'pointer',
-          }}
-          onClick={handleLogout}
-        >
-          <div
-            style={{
-              color: 'var(--nd-text-display)',
-              fontFamily: '"Space Mono", "JetBrains Mono", monospace',
-              fontSize: 14,
-              fontWeight: 700,
-              lineHeight: 1.4,
-            }}
-          >
-            Admin User
-          </div>
-          <div
-            style={{
-              marginTop: 4,
-              color: 'var(--nd-text-secondary)',
-              fontSize: 12,
-              lineHeight: 1.5,
-            }}
-          >
-            超级管理员
-          </div>
-        </div>
-      );
+    actionsRender: () => [
+      <Question key="doc" />,
+      <SelectLang key="SelectLang" />,
+    ],
+    avatarProps: {
+      src: initialState?.currentUser?.avatar,
+      title: <AvatarName />,
+      render: (_, avatarChildren) => {
+        return <AvatarDropdown>{avatarChildren}</AvatarDropdown>;
+      },
     },
+    waterMarkProps: {
+      content: initialState?.currentUser?.name,
+    },
+    footerRender: () => <Footer />,
     onPageChange: () => {
       const { location } = history;
-      // 如果没有登录，重定向到 login
       if (!initialState?.currentUser && location.pathname !== loginPath) {
         history.push(loginPath);
       }
     },
-    bgLayoutImgList: [],
-    links: [],
+    bgLayoutImgList: [
+      {
+        src: 'https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/D2LWSqNny4sAAAAAAAAAAAAAFl94AQBr',
+        left: 85,
+        bottom: 100,
+        height: '303px',
+      },
+      {
+        src: 'https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/C2TWRpJpiC0AAAAAAAAAAAAAFl94AQBr',
+        bottom: -68,
+        right: -45,
+        height: '303px',
+      },
+      {
+        src: 'https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/F6vSTbj8KpYAAAAAAAAAAAAAFl94AQBr',
+        bottom: 0,
+        left: 0,
+        width: '331px',
+      },
+    ],
+    links: isDev
+      ? [
+          <Link key="openapi" to="/umi/plugin/openapi" target="_blank">
+            <LinkOutlined />
+            <span>OpenAPI 文档</span>
+          </Link>,
+        ]
+      : [],
     menuHeaderRender: undefined,
-    childrenRender: (children) => (
-      <>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Doto:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap"
-          rel="stylesheet"
-        />
-        {children}
-      </>
-    ),
+    childrenRender: (children) => {
+      return (
+        <>
+          {children}
+
+          {isDev && (
+            <SettingDrawer
+              disableUrlParams
+              enableDarkTheme
+              settings={initialState?.settings}
+              onSettingChange={(settings) => {
+                setInitialState((preInitialState) => ({
+                  ...preInitialState,
+                  settings,
+                }));
+              }}
+            />
+          )}
+        </>
+      );
+    },
     ...initialState?.settings,
   };
 };
