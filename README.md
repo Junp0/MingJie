@@ -69,6 +69,28 @@
 
 ---
 
+## 部署效果截图
+
+Docker 部署成功后访问 `http://localhost:8000`，可以看到以下产品界面：
+
+### 仪表盘
+
+![MingJie 仪表盘](docs/screenshots/dashboard.png)
+
+### 库表数据列表
+
+![MingJie 库表数据列表](docs/screenshots/data-overview-fields.png)
+
+### 数据资产发现
+
+![MingJie 数据资产发现](docs/screenshots/data-asset-discovery.png)
+
+### 分类分级模板
+
+![MingJie 分类分级模板](docs/screenshots/classification-template.png)
+
+---
+
 ## 架构设计
 
 ```
@@ -105,55 +127,18 @@
 
 | 依赖 | 版本要求 |
 |------|---------|
-| Node.js | >= 18 |
 | Docker & Docker Compose | latest |
 | 系统内存 | >= 3.6 GB |
 
-### 方式一：一键启动
+### Docker 启动
 
 ```bash
 git clone https://github.com/Junp0/MingJie.git
 cd MingJie
-chmod +x start.sh
-./start.sh
-```
-
-> 脚本自动完成：MySQL 容器 → 健康检查 → 后端安装 & Prisma 生成 → 后端启动 → 前端安装 → 前端启动
-
-### 方式二：手动启动
-
-**1. 启动数据库**
-
-```bash
-docker compose up -d
-```
-
-**2. 启动后端**
-
-```bash
-cd backend
-cp .env.example .env        # 编辑数据库连接等配置
-npm install
-npx prisma generate
-npx prisma migrate deploy
-npm run start:dev
-```
-
-**3. 启动前端**
-
-```bash
-cd frontend
-pnpm install                 # 或 npm install
-npm run start:dev
-```
-
-### 方式三：Docker 部署
-
-前端、后端、数据库分别运行在独立容器中：
-
-```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+启动后，前端、后端、数据库分别运行在独立容器中：
 
 容器与端口：
 
@@ -166,8 +151,14 @@ docker compose -f docker-compose.prod.yml up -d --build
 常用命令：
 
 ```bash
+# 查看日志
 docker compose -f docker-compose.prod.yml logs -f
+
+# 停止服务
 docker compose -f docker-compose.prod.yml down
+
+# 停止并清理数据库卷
+docker compose -f docker-compose.prod.yml down -v
 ```
 
 如果构建时卡在 `failed to fetch anonymous token`、`TLS handshake timeout` 或基础镜像 metadata 拉取阶段，说明当前网络无法稳定访问 Docker Hub。可以先验证基础镜像：
@@ -199,13 +190,17 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ## 配置说明
 
-在 `backend/.env` 中配置以下环境变量：
+Docker Compose 会读取项目根目录 `.env` 中的环境变量；未配置时使用下表默认值：
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `DATABASE_URL` | MySQL 连接字符串 | `mysql://app:your_password@127.0.0.1:3307/my_ant_design_pro` |
-| `PORT` | 后端服务端口 | `3001` |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | `root_password` |
+| `MYSQL_DATABASE` | 应用数据库名 | `my_ant_design_pro` |
+| `MYSQL_USER` | 应用数据库用户 | `app` |
+| `MYSQL_PASSWORD` | 应用数据库密码 | `app_password` |
 | `JWT_SECRET` | JWT 签名密钥（生产环境务必替换） | `replace-with-your-jwt-secret` |
+| `NODE_IMAGE` | 后端/前端构建使用的 Node.js 基础镜像 | `node:22-alpine` |
+| `NGINX_IMAGE` | 前端运行使用的 Nginx 基础镜像 | `nginx:1.27-alpine` |
 
 ---
 
@@ -277,9 +272,9 @@ MingJie/
 │       └── config.ts                 # UMI 配置
 ├── scripts/                          # 运维脚本
 │   └── monitor.sh                    # 系统资源监控
-├── docker-compose.yml                # 主数据库编排
-├── docker-compose.import-test.yml    # 测试数据库编排
-└── start.sh                          # 一键启动脚本
+├── docker-compose.prod.yml           # Docker 启动编排
+├── docker-compose.yml                # 数据库容器编排
+└── docker-compose.import-test.yml    # 测试数据库编排
 ```
 
 ---
@@ -301,18 +296,6 @@ docker compose -f docker-compose.import-test.yml up -d
 |------|------|--------|--------|------|
 | 测试库 A | 3308 | import_demo_mysql_3308 | importer | importer123 |
 | 测试库 B | 3310 | import_demo_mysql_3310 | importer | importer123 |
-
----
-
-## 构建部署
-
-```bash
-# 后端编译
-cd backend && npm run build
-
-# 前端编译
-cd frontend && npm run build
-```
 
 ---
 

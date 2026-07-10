@@ -1,57 +1,16 @@
-# Ant Design Pro
+# MingJie Frontend
 
-This project is initialized with [Ant Design Pro](https://pro.ant.design). Follow is the quick guide for how to use.
+MingJie 前端应用，基于 React、UMI Max 和 Ant Design Pro 构建。
 
-## Environment Prepare
+## 启动方式
 
-Install `node_modules`:
-
-```bash
-npm install
-```
-
-or
+项目统一使用根目录 Docker Compose 启动：
 
 ```bash
-yarn
+cd ..
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-## Provided Scripts
+前端容器会通过 Nginx 提供静态站点，并监听 `http://localhost:8000`。
 
-Ant Design Pro provides some useful script to help you quick start and build with web project, code style check and test.
-
-Scripts provided in `package.json`. It's safe to modify or add additional script:
-
-### Start project
-
-```bash
-npm start
-```
-
-### Build project
-
-```bash
-npm run build
-```
-
-### Check code style
-
-```bash
-npm run lint
-```
-
-You can also use script to auto fix some lint error:
-
-```bash
-npm run lint:fix
-```
-
-### Test code
-
-```bash
-npm test
-```
-
-## More
-
-You can view full document on our [official website](https://pro.ant.design). And welcome any feedback in our [github](https://github.com/ant-design/ant-design-pro).
+更多端口、环境变量和常用命令请查看根目录 `README.md`。
