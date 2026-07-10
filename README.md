@@ -147,6 +147,45 @@ pnpm install                 # 或 npm install
 npm run start:dev
 ```
 
+### 方式三：Docker 部署
+
+前端、后端、数据库分别运行在独立容器中：
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+容器与端口：
+
+| 容器 | 地址 | 说明 |
+|------|------|------|
+| `mingjie-frontend` | http://localhost:8000 | nginx 静态站点，反代 `/api` 到后端 |
+| `mingjie-backend` | http://localhost:3001 | NestJS API，启动时自动执行 Prisma 迁移 |
+| `mingjie-mysql` | 127.0.0.1:3307 | MySQL 8.4 |
+
+常用命令：
+
+```bash
+docker compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml down
+```
+
+如果构建时卡在 `failed to fetch anonymous token`、`TLS handshake timeout` 或基础镜像 metadata 拉取阶段，说明当前网络无法稳定访问 Docker Hub。可以先验证基础镜像：
+
+```bash
+docker pull node:22-alpine
+docker pull nginx:1.27-alpine
+docker pull mysql:8.4
+```
+
+也可以通过环境变量替换基础镜像来源，例如使用企业内网 registry 或已配置好的镜像源：
+
+```bash
+NODE_IMAGE=your-registry/library/node:22-alpine \
+NGINX_IMAGE=your-registry/library/nginx:1.27-alpine \
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
 ### 访问服务
 
 | 服务 | 地址 | 说明 |

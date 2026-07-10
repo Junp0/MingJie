@@ -20,6 +20,12 @@ type RecordAuditLogInput = {
 export class AuditLogsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private truncateText(value: string, maxLength = 180) {
+    return value.length <= maxLength
+      ? value
+      : `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
   async record(input: RecordAuditLogInput) {
     return this.prisma.auditLog.create({
       data: {
@@ -31,7 +37,7 @@ export class AuditLogsService {
         targetType: input.targetType ?? null,
         targetId: input.targetId ?? null,
         targetName: input.targetName ?? null,
-        detail: input.detail ?? null,
+        detail: input.detail ? this.truncateText(input.detail) : null,
         metadata: input.metadata ?? undefined,
       },
     });

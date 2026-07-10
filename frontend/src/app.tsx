@@ -7,7 +7,6 @@ import React from 'react';
 import {
   AvatarDropdown,
   AvatarName,
-  Footer,
   Question,
   SelectLang,
 } from '@/components';
@@ -76,7 +75,7 @@ export const layout: RunTimeLayoutConfig = ({
     waterMarkProps: {
       content: initialState?.currentUser?.name,
     },
-    footerRender: () => <Footer />,
+    footerRender: false,
     onPageChange: () => {
       const { location } = history;
       if (!initialState?.currentUser && location.pathname !== loginPath) {
@@ -143,6 +142,5 @@ export const layout: RunTimeLayoutConfig = ({
  * @doc https://umijs.org/docs/max/request#配置
  */
 export const request: RequestConfig = {
-  baseURL: process.env.NODE_ENV === 'production' ? 'https://api.secops.top' : undefined,
   ...errorConfig,
 };

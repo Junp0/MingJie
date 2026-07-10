@@ -15,6 +15,13 @@ import { UpdateAutoScanRuleDto } from './dto/update-auto-scan-rule.dto';
 
 const execFileAsync = promisify(execFile);
 
+type NmapScanHit = {
+  address: string;
+  resolvedIp?: string;
+  port: number;
+  sourceType: string;
+};
+
 @Injectable()
 export class AutoScanService {
   constructor(
@@ -41,30 +48,36 @@ export class AutoScanService {
   ];
 
   private static readonly NMAP_TIMEOUT_MS = 300_000; // 5 minutes per host batch
+  private static readonly SCAN_STATUS_MAX_LENGTH = 180;
+
+  private truncateScanStatus(status: string) {
+    return status.length <= AutoScanService.SCAN_STATUS_MAX_LENGTH
+      ? status
+      : `${status.slice(0, AutoScanService.SCAN_STATUS_MAX_LENGTH - 3)}...`;
+  }
 
   /**
-   * Parse an IP range string into a list of individual IPs.
-   * Supports: single IP, CIDR /24-/32, comma-separated, and dash ranges.
-   *   "10.0.0.1"              → [10.0.0.1]
-   *   "10.0.0.0/24"           → [10.0.0.1 … 10.0.0.254]
-   *   "10.0.0.1,10.0.0.2"    → [10.0.0.1, 10.0.0.2]
-   *   "10.0.0.1-10.0.0.5"    → [10.0.0.1 … 10.0.0.5]
+   * Parse scan target text into nmap targets.
+   * Supports: single IP, hostname, CIDR /24-/32, comma-separated, and dash ranges.
+   *   "10.0.0.1"                 -> [10.0.0.1]
+   *   "host.docker.internal"     -> [host.docker.internal]
+   *   "10.0.0.0/24"              -> [10.0.0.1 ... 10.0.0.254]
+   *   "10.0.0.1,10.0.0.2"       -> [10.0.0.1, 10.0.0.2]
+   *   "10.0.0.1-10.0.0.5"       -> [10.0.0.1 ... 10.0.0.5]
    */
-  private expandIpRange(ipRange: string): string[] {
-    const trimmed = ipRange.trim();
+  private expandScanTargets(targetText: string): string[] {
+    const trimmed = targetText.trim();
     if (!trimmed) return [];
 
     // Comma-separated
     if (trimmed.includes(',')) {
       return trimmed
         .split(',')
-        .flatMap((segment) => this.expandIpRange(segment));
+        .flatMap((segment) => this.expandScanTargets(segment));
     }
 
     // CIDR notation
-    const cidrMatch = trimmed.match(
-      /^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/,
-    );
+    const cidrMatch = trimmed.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d+)$/);
     if (cidrMatch) {
       return this.expandCidr(cidrMatch[1], Number(cidrMatch[2]));
     }
@@ -89,7 +102,25 @@ export class AutoScanService {
       return [trimmed];
     }
 
+    if (this.isHostname(trimmed)) {
+      return [trimmed];
+    }
+
     return [];
+  }
+
+  private isHostname(value: string): boolean {
+    if (value.length > 253) return false;
+
+    const labels = value.endsWith('.')
+      ? value.slice(0, -1).split('.')
+      : value.split('.');
+    return labels.every(
+      (label) =>
+        label.length > 0 &&
+        label.length <= 63 &&
+        /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label),
+    );
   }
 
   private expandCidr(baseIp: string, prefix: number): string[] {
@@ -100,9 +131,9 @@ export class AutoScanService {
 
     const parts = baseIp.split('.').map(Number);
     const ipNum =
-      ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>>
-      0;
-    const mask = prefix === 32 ? 0xffffffff : (0xffffffff << (32 - prefix)) >>> 0;
+      ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+    const mask =
+      prefix === 32 ? 0xffffffff : (0xffffffff << (32 - prefix)) >>> 0;
     const network = (ipNum & mask) >>> 0;
     const hostCount = ~mask >>> 0;
 
@@ -127,7 +158,11 @@ export class AutoScanService {
     if (lower.includes('mysql') || lower.includes('mariadb')) return 'mysql';
     if (lower.includes('postgres')) return 'postgresql';
     if (lower.includes('oracle') || lower.includes('tns')) return 'oracle';
-    if (lower.includes('ms-sql') || lower.includes('microsoft sql') || lower.includes('sqlserver'))
+    if (
+      lower.includes('ms-sql') ||
+      lower.includes('microsoft sql') ||
+      lower.includes('sqlserver')
+    )
       return 'sqlserver';
     if (lower.includes('mongo')) return 'mongodb';
     if (lower.includes('redis')) return 'redis';
@@ -143,27 +178,32 @@ export class AutoScanService {
   }
 
   /**
-   * Run nmap -sV on a list of IPs with the given port spec.
+   * Run nmap -sV on a list of targets with the given port spec.
    * Returns only ports identified as database services.
    */
   private async nmapScan(
-    ips: string[],
+    targets: string[],
     portSpec: string,
-  ): Promise<Array<{ ip: string; port: number; sourceType: string }>> {
-    if (ips.length === 0) return [];
+  ): Promise<NmapScanHit[]> {
+    if (targets.length === 0) {
+      throw new Error('扫描目标为空：请输入有效 IP、IP 段或主机名');
+    }
 
-    const hits: Array<{ ip: string; port: number; sourceType: string }> = [];
+    const hits: NmapScanHit[] = [];
+    const failedBatchMessages: string[] = [];
 
     // Process IPs in batches to avoid nmap argument overflow
     const batchSize = 32;
-    for (let i = 0; i < ips.length; i += batchSize) {
-      const batch = ips.slice(i, i + batchSize);
+    for (let i = 0; i < targets.length; i += batchSize) {
+      const batch = targets.slice(i, i + batchSize);
       const args = [
-        '-sV',                // Service/version detection
-        '--open',             // Only show open ports
-        '-T4',                // Aggressive timing
-        '--version-intensity', '5',
-        '-p', portSpec,
+        '-sV', // Service/version detection
+        '--open', // Only show open ports
+        '-T4', // Aggressive timing
+        '--version-intensity',
+        '5',
+        '-p',
+        portSpec,
         ...batch,
       ];
 
@@ -173,15 +213,33 @@ export class AutoScanService {
         });
         hits.push(...this.parseNmapOutput(stdout));
       } catch (error) {
-        // If nmap fails for a batch, log and continue with next batch
+        if (this.isCommandNotFoundError(error)) {
+          throw new Error('扫描失败：后端运行环境未安装 nmap');
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        failedBatchMessages.push(message);
         console.error(
           `nmap scan failed for batch starting at index ${i}:`,
-          error instanceof Error ? error.message : error,
+          message,
         );
       }
     }
 
+    if (failedBatchMessages.length > 0 && hits.length === 0) {
+      throw new Error(`扫描失败：${failedBatchMessages[0]}`);
+    }
+
     return hits;
+  }
+
+  private isCommandNotFoundError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: unknown }).code === 'ENOENT'
+    );
   }
 
   /**
@@ -192,27 +250,25 @@ export class AutoScanService {
    *   PORT     STATE SERVICE VERSION
    *   3306/tcp open  mysql   MySQL 8.4.8
    */
-  private parseNmapOutput(
-    output: string,
-  ): Array<{ ip: string; port: number; sourceType: string }> {
-    const hits: Array<{ ip: string; port: number; sourceType: string }> = [];
-    let currentIp = '';
+  private parseNmapOutput(output: string): NmapScanHit[] {
+    const hits: NmapScanHit[] = [];
+    let currentAddress = '';
+    let currentResolvedIp: string | undefined;
 
     for (const line of output.split('\n')) {
       // Match host line: "Nmap scan report for hostname (1.2.3.4)" or "Nmap scan report for 1.2.3.4"
       const hostMatch = line.match(
-        /Nmap scan report for .*?(\d+\.\d+\.\d+\.\d+)/,
+        /^Nmap scan report for (.+?)(?: \((\d+\.\d+\.\d+\.\d+)\))?$/,
       );
       if (hostMatch) {
-        currentIp = hostMatch[1];
+        currentAddress = hostMatch[1].trim();
+        currentResolvedIp = hostMatch[2];
         continue;
       }
 
       // Match port line: "3306/tcp open  mysql   MySQL 8.4.8"
-      const portMatch = line.match(
-        /^(\d+)\/tcp\s+open\s+(\S+)\s*(.*)?$/,
-      );
-      if (portMatch && currentIp) {
+      const portMatch = line.match(/^(\d+)\/tcp\s+open\s+(\S+)\s*(.*)?$/);
+      if (portMatch && currentAddress) {
         const port = Number(portMatch[1]);
         const serviceName = portMatch[2];
         const versionInfo = portMatch[3]?.trim() ?? '';
@@ -220,7 +276,12 @@ export class AutoScanService {
 
         const sourceType = this.normalizeServiceName(combined);
         if (sourceType) {
-          hits.push({ ip: currentIp, port, sourceType });
+          hits.push({
+            address: currentAddress,
+            resolvedIp: currentResolvedIp,
+            port,
+            sourceType,
+          });
         }
       }
     }
@@ -239,7 +300,9 @@ export class AutoScanService {
     const count = await this.prisma.autoScanRule.count();
     if (count > 0) return;
 
-    const assetGroup = await this.prisma.assetGroup.findFirst({ orderBy: { createdAt: 'asc' } });
+    const assetGroup = await this.prisma.assetGroup.findFirst({
+      orderBy: { createdAt: 'asc' },
+    });
 
     const rule = await this.prisma.autoScanRule.create({
       data: {
@@ -283,7 +346,9 @@ export class AutoScanService {
     });
 
     // Batch lookup: find ImportTasks matching any (ipAddress, port) in results
-    const ipPortPairs = [...new Set(results.map((r) => `${r.ipAddress}:${r.port}`))];
+    const ipPortPairs = [
+      ...new Set(results.map((r) => `${r.ipAddress}:${r.port}`)),
+    ];
     const importTasks = await this.prisma.importTask.findMany({
       where: {
         OR: ipPortPairs.map((pair) => {
@@ -381,9 +446,20 @@ export class AutoScanService {
     return { message: '扫描任务已提交' };
   }
 
-  private async runScan(rule: { id: string; name: string; sourceType: string | null; assetGroupId: string | null }) {
+  private async runScan(rule: {
+    id: string;
+    name: string;
+    sourceType: string | null;
+    assetGroupId: string | null;
+  }) {
     const updateProgress = (progress: number, status: string) =>
-      this.prisma.autoScanRule.update({ where: { id: rule.id }, data: { scanProgress: progress, scanStatus: status } });
+      this.prisma.autoScanRule.update({
+        where: { id: rule.id },
+        data: {
+          scanProgress: progress,
+          scanStatus: this.truncateScanStatus(status),
+        },
+      });
 
     await updateProgress(0, '准备扫描');
 
@@ -398,14 +474,14 @@ export class AutoScanService {
     });
 
     try {
-      // rule.name stores ipRange, rule.sourceType stores portRange
-      const ips = this.expandIpRange(rule.name);
+      // rule.name stores scan targets, rule.sourceType stores portRange
+      const targets = this.expandScanTargets(rule.name);
       const portSpec = (rule.sourceType ?? '').trim();
-      const nmapPortSpec = (!portSpec || portSpec === '0') ? '1-65535' : portSpec;
+      const nmapPortSpec = !portSpec || portSpec === '0' ? '1-65535' : portSpec;
 
-      await updateProgress(5, `正在扫描 ${ips.length} 个 IP`);
+      await updateProgress(5, `正在扫描 ${targets.length} 个目标`);
       let createdResultCount = 0;
-      const hits = await this.nmapScan(ips, nmapPortSpec);
+      const hits = await this.nmapScan(targets, nmapPortSpec);
 
       await updateProgress(50, `发现 ${hits.length} 条结果，正在入库`);
       for (let i = 0; i < hits.length; i++) {
@@ -415,25 +491,33 @@ export class AutoScanService {
         const existing = await this.prisma.autoScanResult.findFirst({
           where: {
             scanRuleId: rule.id,
-            ipAddress: hit.ip,
             port: hit.port,
             ignoredAt: null,
+            OR: [
+              { ipAddress: hit.address },
+              ...(hit.resolvedIp ? [{ ipAddress: hit.resolvedIp }] : []),
+            ],
           },
         });
 
         if (existing) {
           await this.prisma.autoScanResult.update({
             where: { id: existing.id },
-            data: { updatedAt: new Date() },
+            data: {
+              sourceName: `${hit.address}:${hit.port}`,
+              sourceType: hit.sourceType,
+              ipAddress: hit.address,
+              updatedAt: new Date(),
+            },
           });
         } else {
           await this.prisma.autoScanResult.create({
             data: {
               scanRuleId: rule.id,
               assetGroupId: rule.assetGroupId,
-              sourceName: `${hit.ip}:${hit.port}`,
+              sourceName: `${hit.address}:${hit.port}`,
               sourceType: hit.sourceType,
-              ipAddress: hit.ip,
+              ipAddress: hit.address,
               port: hit.port,
               owner: '自动扫描',
               department: '待分配',
@@ -455,7 +539,11 @@ export class AutoScanService {
 
       await this.prisma.autoScanRule.update({
         where: { id: rule.id },
-        data: { lastScannedAt: new Date(), scanProgress: 100, scanStatus: `完成，新增 ${createdResultCount} 条` },
+        data: {
+          lastScannedAt: new Date(),
+          scanProgress: 100,
+          scanStatus: `完成，新增 ${createdResultCount} 条`,
+        },
       });
 
       const summary = {
@@ -475,10 +563,17 @@ export class AutoScanService {
         metadata: summary,
       });
     } catch (error) {
-      await this.prisma.autoScanRule.update({
-        where: { id: rule.id },
-        data: { scanProgress: -1, scanStatus: error instanceof Error ? error.message : '扫描失败' },
-      }).catch(() => {});
+      await this.prisma.autoScanRule
+        .update({
+          where: { id: rule.id },
+          data: {
+            scanProgress: -1,
+            scanStatus: this.truncateScanStatus(
+              error instanceof Error ? error.message : '扫描失败',
+            ),
+          },
+        })
+        .catch(() => {});
       await this.auditLogsService.record({
         category: AuditLogCategory.AUTO_SCAN,
         action: '执行自动扫描',
@@ -547,14 +642,22 @@ export class AutoScanService {
   }
 
   async claimResult(id: string) {
-    const result = await this.prisma.autoScanResult.findUnique({ where: { id } });
+    const result = await this.prisma.autoScanResult.findUnique({
+      where: { id },
+    });
     if (!result) return null;
 
-    let asset = await this.prisma.dataAsset.findFirst({ where: { scanResultId: id } });
+    let asset = await this.prisma.dataAsset.findFirst({
+      where: { scanResultId: id },
+    });
     if (!asset) {
       const assetGroup = result.assetGroupId
-        ? await this.prisma.assetGroup.findUnique({ where: { id: result.assetGroupId } })
-        : await this.prisma.assetGroup.findFirst({ orderBy: { createdAt: 'asc' } });
+        ? await this.prisma.assetGroup.findUnique({
+            where: { id: result.assetGroupId },
+          })
+        : await this.prisma.assetGroup.findFirst({
+            orderBy: { createdAt: 'asc' },
+          });
 
       if (!assetGroup) return null;
 

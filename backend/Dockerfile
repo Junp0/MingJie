@@ -1,0 +1,34 @@
+ARG NODE_IMAGE=node:22-alpine
+
+FROM ${NODE_IMAGE} AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache openssl
+
+COPY package*.json ./
+RUN npm ci
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY nest-cli.json tsconfig*.json ./
+COPY src ./src
+RUN npm run build
+
+FROM ${NODE_IMAGE} AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3001
+
+RUN apk add --no-cache openssl nmap nmap-scripts
+
+COPY package*.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+
+EXPOSE 3001
+
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]

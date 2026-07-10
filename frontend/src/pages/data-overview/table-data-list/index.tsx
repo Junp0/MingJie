@@ -95,6 +95,13 @@ interface FieldListItem extends FieldItem {
   fieldTable: string;
 }
 
+type DatabaseLookupItem = {
+  instanceKey: string;
+  instanceIp: string;
+  instancePort: number;
+  database: DatabaseItem;
+};
+
 const getDatabaseFieldSummary = (database: DatabaseItem) => {
   const activeTables = database.tables.filter((table) => !table.isDeleted);
   const allFields = activeTables.flatMap((table) =>
@@ -280,25 +287,28 @@ const TableDataList: React.FC = () => {
   }, []);
 
   const databaseMap = useMemo(() => {
-    const entries: Array<
-      [string, { instanceKey: string; instanceIp: string; instancePort: number; database: DatabaseItem }]
-    > = [];
+    const databaseEntries: Array<[string, DatabaseLookupItem]> = [];
+    const firstDatabaseByAssetId = new Map<string, DatabaseLookupItem>();
 
     databaseInstances.forEach((instance) => {
       instance.databases.forEach((database) => {
-        entries.push([
-          database.id,
-          {
-            instanceKey: `${instance.ip}:${instance.port}`,
-            instanceIp: instance.ip,
-            instancePort: instance.port,
-            database,
-          },
-        ]);
+        const lookupItem = {
+          instanceKey: `${instance.ip}:${instance.port}`,
+          instanceIp: instance.ip,
+          instancePort: instance.port,
+          database,
+        };
+        databaseEntries.push([database.id, lookupItem]);
+        if (!firstDatabaseByAssetId.has(database.assetId)) {
+          firstDatabaseByAssetId.set(database.assetId, lookupItem);
+        }
       });
     });
 
-    return new Map(entries);
+    return {
+      byDatabaseId: new Map(databaseEntries),
+      firstByAssetId: firstDatabaseByAssetId,
+    };
   }, [databaseInstances]);
 
   const visibleDatabaseInstances = useMemo(
@@ -337,20 +347,26 @@ const TableDataList: React.FC = () => {
     setSelectedTable(table);
   };
 
-  const toggleInstanceExpand = (instanceKey: string) => {
+  const selectFirstDatabaseInInstance = (instance: DatabaseInstance) => {
+    const instanceKey = `${instance.ip}:${instance.port}`;
     const treeKey = `instance:${instanceKey}`;
-    setExpandedTreeKeys((current) =>
-      current.includes(treeKey)
-        ? current.filter((key) => key !== treeKey)
-        : [...current, treeKey],
-    );
-    setSelectedDatabaseInstance(null);
-    setSelectedDatabaseId(null);
+    const firstDatabase = instance.databases[0];
+
+    setExpandedTreeKeys([treeKey]);
+    if (!firstDatabase) {
+      setSelectedDatabaseInstance(null);
+      setSelectedDatabaseId(null);
+      setSelectedTable(null);
+      return;
+    }
+
+    setSelectedDatabaseInstance(instanceKey);
+    setSelectedDatabaseId(firstDatabase.id);
     setSelectedTable(null);
   };
 
   const selectDatabase = (databaseId: string) => {
-    const matched = databaseMap.get(databaseId);
+    const matched = databaseMap.byDatabaseId.get(databaseId);
 
     if (!matched) {
       return;
@@ -470,7 +486,8 @@ const TableDataList: React.FC = () => {
       return;
     }
 
-    const matched = databaseMap.get(assetId);
+    const matched =
+      databaseMap.firstByAssetId.get(assetId) ?? databaseMap.byDatabaseId.get(assetId);
     if (!matched) {
       messageApi.warning('未在库表数据列表中找到对应的数据资产');
       return;
@@ -478,11 +495,7 @@ const TableDataList: React.FC = () => {
 
     setSelectedDatabaseInstance(matched.instanceKey);
     setSelectedDatabaseId(matched.database.id);
-    setExpandedTreeKeys((current) =>
-      current.includes(`instance:${matched.instanceKey}`)
-        ? current
-        : [...current, `instance:${matched.instanceKey}`],
-    );
+    setExpandedTreeKeys([`instance:${matched.instanceKey}`]);
     setSelectedTable(null);
   }, [
     databaseInstances,
@@ -531,7 +544,7 @@ const TableDataList: React.FC = () => {
                   }}
                   onClick={(event) => {
                     event.stopPropagation();
-                    toggleInstanceExpand(`${instance.ip}:${instance.port}`);
+                    selectFirstDatabaseInInstance(instance);
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>

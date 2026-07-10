@@ -183,6 +183,15 @@ const isValidIpv4Address = (value: string) => {
   });
 };
 
+const isValidHostAddress = (value: string) => {
+  if (isValidIpv4Address(value)) return true;
+  if (value.length > 253) return false;
+
+  return value
+    .split(".")
+    .every((segment) => /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(segment));
+};
+
 const isValidPort = (value?: number | null) =>
   Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 65535;
 
@@ -640,6 +649,18 @@ const DataImportForm: React.FC = () => {
       return;
     }
 
+    try {
+      await form.validateFields([
+        "databaseType",
+        "ipAddress",
+        "port",
+        "username",
+        "password",
+      ]);
+    } catch {
+      return;
+    }
+
     const validatedPort = Number(port);
 
     setDiscoveringDatabases(true);
@@ -659,6 +680,7 @@ const DataImportForm: React.FC = () => {
 
       setDatabaseOptions(databases);
       syncDiscoveredDatabases(databases);
+      form.setFields([{ name: "ipAddress", errors: [] }]);
       setConnectionTestStatus("success");
       setConnectionTestMessage(
         databases.length
@@ -1042,15 +1064,15 @@ const DataImportForm: React.FC = () => {
                           if (!value?.trim()) {
                             return Promise.resolve();
                           }
-                          if (isValidIpv4Address(value.trim())) {
+                          if (isValidHostAddress(value.trim())) {
                             return Promise.resolve();
                           }
-                          return Promise.reject(new Error("请输入合法的IP地址"));
+                          return Promise.reject(new Error("请输入合法的主机或IP地址"));
                         },
                       },
                     ]}
                   >
-                    <Input placeholder="例如：127.0.0.1" />
+                    <Input placeholder="例如：host.docker.internal" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={4}>
