@@ -4,7 +4,7 @@ import { formatBeijingDateTime } from '@/utils/datetime';
 export type TemplateStatus = 'active' | 'inactive' | 'draft';
 export type LevelCode = string;
 export type RuleMatchMode = 'any' | 'all';
-export type RuleMatchTarget = 'fieldName' | 'fieldComment' | 'fieldType' | 'tableName' | 'tableComment';
+export type RuleMatchTarget = 'fieldName' | 'fieldComment' | 'fieldType' | 'tableName' | 'tableComment' | 'sampleData';
 export type RuleMatcher = 'regex' | 'equals' | 'contains' | 'prefix' | 'suffix' | 'enumContains';
 
 export interface RuleCondition {
@@ -12,7 +12,7 @@ export interface RuleCondition {
   target: RuleMatchTarget;
   matcher: RuleMatcher;
   value: string;
-  hitRate: number;
+  hitRate?: number | null;
 }
 
 export interface RuleConfig {
@@ -116,6 +116,7 @@ export const RULE_MATCH_TARGET_OPTIONS: Array<{ value: RuleMatchTarget; label: s
   { value: 'fieldType', label: '字段类型' },
   { value: 'tableName', label: '表名' },
   { value: 'tableComment', label: '表注释' },
+  { value: 'sampleData', label: '样本数据' },
 ];
 
 export const RULE_MATCHER_OPTIONS: Array<{ value: RuleMatcher; label: string }> = [
@@ -143,8 +144,8 @@ export const LEVEL_COLOR_PRESET_OPTIONS: Array<{ value: string; label: string }>
 const STANDARD_DEFAULT_LEVEL_DEFINITIONS: LevelDefinitionItem[] = [
   { id: 'level-l1-standard', code: 'L1', name: '公开数据', description: '已公开发布或可面向公众提供的数据，泄露后通常不会造成明显损害。', color: '#52c41a', isSensitive: false, needMask: false, needEncrypt: false, note: '适用于公告、公示信息、公开产品目录、匿名统计结果等。' },
   { id: 'level-l2-standard', code: 'L2', name: '内部数据', description: '仅限组织内部使用的一般业务与管理数据，外泄会造成有限运营影响。', color: '#1677ff', isSensitive: false, needMask: false, needEncrypt: false, note: '适用于内部台账、一般运营数据、组织通讯录等。' },
-  { id: 'level-l3-standard', code: 'L3', name: '敏感数据', description: '涉及敏感个人信息或重要业务明细，需强化访问控制与最小化暴露。', color: '#fa8c16', isSensitive: true, needMask: true, needEncrypt: true, note: '适用于手机号、姓名与证件组合、交易流水、客户身份信息等。' },
-  { id: 'level-l4-standard', code: 'L4', name: '重要数据', description: '对业务连续性、行业监管、公共利益或组织核心竞争力具有较高价值的数据。', color: '#f5222d', isSensitive: true, needMask: true, needEncrypt: true, note: '适用于核心经营指标、风控策略变量、重要业务清单、监管报送数据等。' },
+  { id: 'level-l3-standard', code: 'L3', name: '敏感数据', description: '涉及敏感个人信息或重要业务明细，需强化访问控制与最小化暴露。', color: '#fa8c16', isSensitive: true, needMask: false, needEncrypt: false, note: '适用于手机号、姓名与证件组合、交易流水、客户身份信息等。' },
+  { id: 'level-l4-standard', code: 'L4', name: '重要数据', description: '可能对公共利益、行业运行或组织关键业务造成严重危害，需结合规模、场景和行业目录复核。', color: '#f5222d', isSensitive: true, needMask: true, needEncrypt: true, note: '重要数据认定仍需结合行业主管部门目录和人工复核。' },
   { id: 'level-l5-standard', code: 'L5', name: '核心数据', description: '一旦泄露、篡改或破坏，可能对国家安全、关键业务或重大公共利益造成严重危害。', color: '#722ed1', isSensitive: true, needMask: true, needEncrypt: true, note: '适用于主密钥材料、核心控制参数、最高敏感认证要素等。' },
 ];
 
@@ -197,7 +198,7 @@ type BackendRule = {
   target: string;
   matcher: string;
   value: string;
-  hitRate: number;
+  hitRate?: number | null;
   sortOrder?: number;
 };
 
@@ -225,7 +226,7 @@ const DEFAULT_LEVEL_DEFINITIONS: LevelDefinitionItem[] = [
 
 const LEVEL_NAME_MAP: Record<string, string> = { L1: '公开级', L2: '内部级', L3: '敏感级', L4: '高敏级', L5: '监管级' };
 const RULE_MATCH_MODE_LABEL_MAP: Record<RuleMatchMode, string> = { any: '任一满足', all: '全部满足' };
-const RULE_MATCH_TARGET_LABEL_MAP: Record<RuleMatchTarget, string> = { fieldName: '字段名', fieldComment: '字段注释', fieldType: '字段类型', tableName: '表名', tableComment: '表注释' };
+const RULE_MATCH_TARGET_LABEL_MAP: Record<RuleMatchTarget, string> = { fieldName: '字段名', fieldComment: '字段注释', fieldType: '字段类型', tableName: '表名', tableComment: '表注释', sampleData: '样本数据' };
 const RULE_MATCHER_LABEL_MAP: Record<RuleMatcher, string> = { regex: '正则匹配', equals: '等于', contains: '包含', prefix: '前缀匹配', suffix: '后缀匹配', enumContains: '枚举包含' };
 const statusMap: Record<BackendTemplate['status'], TemplateStatus> = { ACTIVE: 'active', INACTIVE: 'inactive', DRAFT: 'draft' };
 const reverseStatusMap: Record<TemplateStatus, BackendTemplate['status']> = { active: 'ACTIVE', inactive: 'INACTIVE', draft: 'DRAFT' };
@@ -279,7 +280,7 @@ const buildTree = (categories: BackendCategory[], dataTypes: BackendDataType[], 
             target: (rule.target || 'fieldName') as RuleMatchTarget,
             matcher: (rule.matcher || 'regex') as RuleMatcher,
             value: rule.value,
-            hitRate: Number(rule.hitRate ?? 0),
+            hitRate: rule.hitRate == null ? null : Number(rule.hitRate),
           })),
         },
       },
@@ -363,12 +364,21 @@ export const getRuleMatchModeLabel = (matchMode: RuleMatchMode): string => RULE_
 export const getRuleMatchTargetLabel = (target: RuleMatchTarget): string => RULE_MATCH_TARGET_LABEL_MAP[target];
 export const getRuleMatcherLabel = (matcher: RuleMatcher): string => RULE_MATCHER_LABEL_MAP[matcher];
 export const createEmptyRuleConfig = (): RuleConfig => ({ matchMode: 'any', conditions: [] });
-export const createDefaultRuleCondition = (): RuleCondition => ({ id: createId('rule'), target: 'fieldName', matcher: 'regex', value: '', hitRate: 0 });
+export const createDefaultRuleCondition = (): RuleCondition => ({ id: createId('rule'), target: 'sampleData', matcher: 'regex', value: '', hitRate: 100 });
 export const formatRuleSummary = (ruleConfig?: RuleConfig): string => {
   const conditions = ruleConfig?.conditions.filter((item) => item.value.trim()) ?? [];
   if (!conditions.length) return '';
   const prefix = getRuleMatchModeLabel(ruleConfig?.matchMode === 'all' ? 'all' : 'any');
-  const content = conditions.map((condition) => `${getRuleMatchTargetLabel(condition.target)}${getRuleMatcherLabel(condition.matcher)}${condition.value}`).join('；');
+  const content = conditions
+    .map(
+      (condition) =>
+        `${getRuleMatchTargetLabel(condition.target)}${getRuleMatcherLabel(condition.matcher)}${condition.value}${
+          condition.target === 'sampleData'
+            ? `（样本命中率≥${condition.hitRate ?? 100}%）`
+            : ''
+        }`,
+    )
+    .join('；');
   return `${prefix}：${content}`;
 };
 export const countCategoryNodes = (nodes: CategoryNode[]): number => nodes.reduce((total, node) => total + 1 + countCategoryNodes(node.children ?? []), 0);
@@ -579,7 +589,7 @@ const updateDataTypeRuleConfig = async (templateId: string, dataTypeId: string, 
       target: rule.target,
       matcher: rule.matcher,
       value: rule.value.trim(),
-      hitRate: Number(rule.hitRate ?? 0),
+      hitRate: rule.target === 'sampleData' ? Number(rule.hitRate ?? 100) : undefined,
       sortOrder: index,
     };
 

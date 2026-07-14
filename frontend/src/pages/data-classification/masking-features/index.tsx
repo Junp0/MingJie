@@ -2,12 +2,8 @@ import React from 'react';
 import ProtectionFeatureManager from '../components/ProtectionFeatureManager';
 
 const MASKING_SCENE_OPTIONS = [
-  '连续*',
-  '连续#',
-  '连续X/x',
-  '固定掩码串',
-  '前后保留中间替换',
-  '全值符号化',
+  '星号*',
+  '井号#',
 ];
 
 const MaskingFeatures: React.FC = () => (

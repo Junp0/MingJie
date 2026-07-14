@@ -1,396 +1,125 @@
 import {
-  AlipayCircleOutlined,
+  ArrowRightOutlined,
   LockOutlined,
   MobileOutlined,
-  TaobaoCircleOutlined,
   UserOutlined,
-  WeiboCircleOutlined,
 } from '@ant-design/icons';
-import {
-  LoginForm,
-  ProFormCaptcha,
-  ProFormCheckbox,
-  ProFormText,
-} from '@ant-design/pro-components';
-import {
-  FormattedMessage,
-  Helmet,
-  SelectLang,
-  useIntl,
-  useModel,
-} from '@umijs/max';
-import { Alert, App, Tabs } from 'antd';
-import { createStyles } from 'antd-style';
+import { FormattedMessage, Helmet, SelectLang, useIntl, useModel } from '@umijs/max';
+import { App } from 'antd';
 import React, { useState } from 'react';
 import { flushSync } from 'react-dom';
 import { login } from '@/services/ant-design-pro/api';
 import { getFakeCaptcha } from '@/services/ant-design-pro/login';
 import Settings from '../../../../config/defaultSettings';
+import './index.less';
 
-const useStyles = createStyles(({ token }) => {
-  return {
-    action: {
-      marginLeft: '8px',
-      color: 'rgba(0, 0, 0, 0.2)',
-      fontSize: '24px',
-      verticalAlign: 'middle',
-      cursor: 'pointer',
-      transition: 'color 0.3s',
-      '&:hover': {
-        color: token.colorPrimaryActive,
-      },
-    },
-    lang: {
-      width: 42,
-      height: 42,
-      lineHeight: '42px',
-      position: 'fixed',
-      right: 16,
-      borderRadius: token.borderRadius,
-      ':hover': {
-        backgroundColor: token.colorBgTextHover,
-      },
-    },
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100vh',
-      overflow: 'auto',
-      backgroundImage:
-        "url('https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/V-_oS6r-i7wAAAAAAAAAAAAAFl94AQBr')",
-      backgroundSize: '100% 100%',
-    },
-  };
-});
-
-const ActionIcons = () => {
-  const { styles } = useStyles();
-
-  return (
-    <>
-      <AlipayCircleOutlined
-        key="AlipayCircleOutlined"
-        className={styles.action}
-      />
-      <TaobaoCircleOutlined
-        key="TaobaoCircleOutlined"
-        className={styles.action}
-      />
-      <WeiboCircleOutlined
-        key="WeiboCircleOutlined"
-        className={styles.action}
-      />
-    </>
-  );
-};
-
-const Lang = () => {
-  const { styles } = useStyles();
-
-  return (
-    <div className={styles.lang} data-lang>
-      {SelectLang && <SelectLang />}
-    </div>
-  );
-};
-
-const LoginMessage: React.FC<{
-  content: string;
-}> = ({ content }) => {
-  return (
-    <Alert
-      style={{
-        marginBottom: 24,
-      }}
-      message={content}
-      type="error"
-      showIcon
-    />
-  );
-};
+type LoginMode = 'account' | 'mobile';
 
 const Login: React.FC = () => {
-  const [userLoginState, setUserLoginState] = useState<API.LoginResult>({});
-  const [type, setType] = useState<string>('account');
+  const [mode, setMode] = useState<LoginMode>('account');
+  const [values, setValues] = useState({ username: '', password: '', mobile: '', captcha: '' });
+  const [remember, setRemember] = useState(true);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const { initialState, setInitialState } = useModel('@@initialState');
-  const { styles } = useStyles();
   const { message } = App.useApp();
   const intl = useIntl();
+
+  const update = (key: keyof typeof values, value: string) => {
+    setValues((current) => ({ ...current, [key]: value }));
+    setError('');
+  };
 
   const fetchUserInfo = async () => {
     const userInfo = await initialState?.fetchUserInfo?.();
     if (userInfo) {
-      flushSync(() => {
-        setInitialState((s) => ({
-          ...s,
-          currentUser: userInfo,
-        }));
-      });
+      flushSync(() => setInitialState((state) => ({ ...state, currentUser: userInfo })));
     }
   };
 
-  const handleSubmit = async (values: API.LoginParams) => {
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const missing = mode === 'account'
+      ? !values.username.trim() || !values.password
+      : !/^1\d{10}$/.test(values.mobile) || !values.captcha.trim();
+    if (missing) {
+      setError(mode === 'account' ? '请输入用户名和密码' : '请输入正确的手机号和验证码');
+      return;
+    }
+    setLoading(true);
     try {
-      const { autoLogin: _autoLogin, ...loginValues } = values;
-      const msg = await login({ ...loginValues, type });
-      if (msg.status === 'ok') {
-        if (msg.token) {
-          localStorage.setItem('token', msg.token);
-        }
-        const defaultLoginSuccessMessage = intl.formatMessage({
-          id: 'pages.login.success',
-          defaultMessage: '登录成功！',
-        });
-        message.success(defaultLoginSuccessMessage);
+      const payload = mode === 'account'
+        ? { username: values.username, password: values.password }
+        : { mobile: values.mobile, captcha: values.captcha };
+      const result = await login({ ...payload, type: mode } as API.LoginParams);
+      if (result.status === 'ok') {
+        if (result.token) localStorage.setItem('token', result.token);
+        message.success(intl.formatMessage({ id: 'pages.login.success', defaultMessage: '登录成功！' }));
         await fetchUserInfo();
-        const urlParams = new URL(window.location.href).searchParams;
-        window.location.href = urlParams.get('redirect') || '/';
-        return;
+        const redirect = new URL(window.location.href).searchParams.get('redirect');
+        window.location.href = redirect || '/';
+      } else {
+        setError(intl.formatMessage({ id: 'pages.login.accountLogin.errorMessage', defaultMessage: '账户或密码错误' }));
       }
-      console.log(msg);
-      setUserLoginState(msg);
-    } catch (error) {
-      const defaultLoginFailureMessage = intl.formatMessage({
-        id: 'pages.login.failure',
-        defaultMessage: '登录失败，请重试！',
-      });
-      console.log(error);
-      message.error(defaultLoginFailureMessage);
+    } catch (_error) {
+      message.error(intl.formatMessage({ id: 'pages.login.failure', defaultMessage: '登录失败，请重试！' }));
+    } finally {
+      setLoading(false);
     }
   };
-  const { status, type: loginType } = userLoginState;
+
+  const sendCaptcha = async () => {
+    if (!/^1\d{10}$/.test(values.mobile)) {
+      setError('请输入正确的手机号');
+      return;
+    }
+    setCaptchaLoading(true);
+    try {
+      const result = await getFakeCaptcha({ phone: values.mobile });
+      if (result) message.success('验证码已发送，演示验证码：1234');
+    } finally {
+      setCaptchaLoading(false);
+    }
+  };
 
   return (
-    <div className={styles.container}>
-      <Helmet>
-        <title>
-          {intl.formatMessage({
-            id: 'menu.login',
-            defaultMessage: '登录页',
-          })}
-          {Settings.title && ` - ${Settings.title}`}
-        </title>
-      </Helmet>
-      <Lang />
-      <div
-        style={{
-          flex: '1',
-          padding: '32px 0',
-        }}
-      >
-        <LoginForm
-          contentStyle={{
-            minWidth: 280,
-            maxWidth: '75vw',
-          }}
-          logo={<img alt="logo" src="/logo.svg" />}
-          title="MINGJIE DCG"
-          subTitle={intl.formatMessage({
-            id: 'pages.layouts.userLayout.title',
-          })}
-          initialValues={{
-            autoLogin: true,
-          }}
-          actions={[
-            <FormattedMessage
-              key="loginWith"
-              id="pages.login.loginWith"
-              defaultMessage="其他登录方式"
-            />,
-            <ActionIcons key="icons" />,
-          ]}
-          onFinish={async (values) => {
-            await handleSubmit(values as API.LoginParams);
-          }}
-        >
-          <Tabs
-            activeKey={type}
-            onChange={setType}
-            centered
-            items={[
-              {
-                key: 'account',
-                label: intl.formatMessage({
-                  id: 'pages.login.accountLogin.tab',
-                  defaultMessage: '账户密码登录',
-                }),
-              },
-              {
-                key: 'mobile',
-                label: intl.formatMessage({
-                  id: 'pages.login.phoneLogin.tab',
-                  defaultMessage: '手机号登录',
-                }),
-              },
-            ]}
-          />
-
-          {status === 'error' && loginType === 'account' && (
-            <LoginMessage
-              content={intl.formatMessage({
-                id: 'pages.login.accountLogin.errorMessage',
-                defaultMessage: '账户或密码错误(admin/ant.design)',
-              })}
-            />
-          )}
-          {type === 'account' && (
-            <>
-              <ProFormText
-                name="username"
-                fieldProps={{
-                  size: 'large',
-                  prefix: <UserOutlined />,
-                }}
-                placeholder={intl.formatMessage({
-                  id: 'pages.login.username.placeholder',
-                  defaultMessage: '用户名: admin or user',
-                })}
-                rules={[
-                  {
-                    required: true,
-                    message: (
-                      <FormattedMessage
-                        id="pages.login.username.required"
-                        defaultMessage="请输入用户名!"
-                      />
-                    ),
-                  },
-                ]}
-              />
-              <ProFormText.Password
-                name="password"
-                fieldProps={{
-                  size: 'large',
-                  prefix: <LockOutlined />,
-                }}
-                placeholder={intl.formatMessage({
-                  id: 'pages.login.password.placeholder',
-                  defaultMessage: '密码: ant.design',
-                })}
-                rules={[
-                  {
-                    required: true,
-                    message: (
-                      <FormattedMessage
-                        id="pages.login.password.required"
-                        defaultMessage="请输入密码！"
-                      />
-                    ),
-                  },
-                ]}
-              />
-            </>
-          )}
-
-          {status === 'error' && loginType === 'mobile' && (
-            <LoginMessage content="验证码错误" />
-          )}
-          {type === 'mobile' && (
-            <>
-              <ProFormText
-                fieldProps={{
-                  size: 'large',
-                  prefix: <MobileOutlined />,
-                }}
-                name="mobile"
-                placeholder={intl.formatMessage({
-                  id: 'pages.login.phoneNumber.placeholder',
-                  defaultMessage: '手机号',
-                })}
-                rules={[
-                  {
-                    required: true,
-                    message: (
-                      <FormattedMessage
-                        id="pages.login.phoneNumber.required"
-                        defaultMessage="请输入手机号！"
-                      />
-                    ),
-                  },
-                  {
-                    pattern: /^1\d{10}$/,
-                    message: (
-                      <FormattedMessage
-                        id="pages.login.phoneNumber.invalid"
-                        defaultMessage="手机号格式错误！"
-                      />
-                    ),
-                  },
-                ]}
-              />
-              <ProFormCaptcha
-                fieldProps={{
-                  size: 'large',
-                  prefix: <LockOutlined />,
-                }}
-                captchaProps={{
-                  size: 'large',
-                }}
-                placeholder={intl.formatMessage({
-                  id: 'pages.login.captcha.placeholder',
-                  defaultMessage: '请输入验证码',
-                })}
-                captchaTextRender={(timing, count) => {
-                  if (timing) {
-                    return `${count} ${intl.formatMessage({
-                      id: 'pages.getCaptchaSecondText',
-                      defaultMessage: '获取验证码',
-                    })}`;
-                  }
-                  return intl.formatMessage({
-                    id: 'pages.login.phoneLogin.getVerificationCode',
-                    defaultMessage: '获取验证码',
-                  });
-                }}
-                name="captcha"
-                rules={[
-                  {
-                    required: true,
-                    message: (
-                      <FormattedMessage
-                        id="pages.login.captcha.required"
-                        defaultMessage="请输入验证码！"
-                      />
-                    ),
-                  },
-                ]}
-                onGetCaptcha={async (phone) => {
-                  const result = await getFakeCaptcha({
-                    phone,
-                  });
-                  if (!result) {
-                    return;
-                  }
-                  message.success('获取验证码成功！验证码为：1234');
-                }}
-              />
-            </>
-          )}
-          <div
-            style={{
-              marginBottom: 24,
-            }}
-          >
-            <ProFormCheckbox noStyle name="autoLogin">
-              <FormattedMessage
-                id="pages.login.rememberMe"
-                defaultMessage="自动登录"
-              />
-            </ProFormCheckbox>
-            <a
-              style={{
-                float: 'right',
-              }}
-            >
-              <FormattedMessage
-                id="pages.login.forgotPassword"
-                defaultMessage="忘记密码"
-              />
-            </a>
+    <main className="login-page">
+      <Helmet><title>{intl.formatMessage({ id: 'menu.login', defaultMessage: '登录' })}{Settings.title && ` - ${Settings.title}`}</title></Helmet>
+      <div className="login-language"><SelectLang /></div>
+      <section className="login-showcase">
+        <div className="showcase-mark"><span>MJ</span></div>
+        <p className="showcase-kicker">DATA · CLASSIFICATION · GOVERNANCE</p>
+        <h1>让数据，<br /><em>更有秩序。</em></h1>
+        <p className="showcase-copy">MingJie DCG 为企业提供可信、可控、可持续的数据治理能力。</p>
+        <div className="showcase-line" />
+        <span className="showcase-meta">MINGJIE / DCG <b>01</b></span>
+      </section>
+      <section className="login-panel">
+        <div className="login-card">
+          <div className="brand-mobile"><div className="brand-symbol">MJ</div><span>MINGJIE <small>DCG</small></span></div>
+          <div className="login-heading"><span>欢迎回来</span><h2>登录工作台</h2><p>使用您的账号继续访问数据治理平台</p></div>
+          <div className="login-tabs" role="tablist">
+            <button type="button" className={mode === 'account' ? 'active' : ''} onClick={() => { setMode('account'); setError(''); }}><FormattedMessage id="pages.login.accountLogin.tab" defaultMessage="账号登录" /></button>
+            <button type="button" className={mode === 'mobile' ? 'active' : ''} onClick={() => { setMode('mobile'); setError(''); }}><FormattedMessage id="pages.login.phoneLogin.tab" defaultMessage="手机号登录" /></button>
           </div>
-        </LoginForm>
-      </div>
-    </div>
+          <form onSubmit={submit} noValidate>
+            {mode === 'account' ? <>
+              <label className="field"><span>用户名</span><div className="input-wrap"><UserOutlined /><input value={values.username} onChange={(e) => update('username', e.target.value)} placeholder="请输入用户名" autoComplete="username" /></div></label>
+              <label className="field"><span>密码</span><div className="input-wrap"><LockOutlined /><input type="password" value={values.password} onChange={(e) => update('password', e.target.value)} placeholder="请输入密码" autoComplete="current-password" /></div></label>
+            </> : <>
+              <label className="field"><span>手机号</span><div className="input-wrap"><MobileOutlined /><input value={values.mobile} onChange={(e) => update('mobile', e.target.value)} placeholder="请输入手机号" inputMode="tel" /></div></label>
+              <label className="field"><span>验证码</span><div className="input-wrap"><LockOutlined /><input value={values.captcha} onChange={(e) => update('captcha', e.target.value)} placeholder="请输入验证码" /><button type="button" className="captcha-button" onClick={sendCaptcha} disabled={captchaLoading}>{captchaLoading ? '发送中' : '获取验证码'}</button></div></label>
+            </>}
+            {error && <p className="login-error" role="alert">{error}</p>}
+            <div className="login-options"><label><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span>保持登录状态</span></label><button type="button" className="link-button">忘记密码？</button></div>
+            <button className="submit-button" type="submit" disabled={loading}>{loading ? '登录中…' : '进入工作台'} <ArrowRightOutlined /></button>
+          </form>
+          <p className="login-footer">首次使用？<button type="button" className="link-button">联系管理员开通账号</button></p>
+        </div>
+        <span className="panel-copyright">© 2025 MingJie DCG · 数据治理平台</span>
+      </section>
+    </main>
   );
 };
 

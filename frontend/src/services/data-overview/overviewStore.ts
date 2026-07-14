@@ -36,7 +36,7 @@ export interface MissedDataItem extends Omit<FullDataItem, 'status'> {
   key: string;
   lastCheckTime: string;
   closestClassificationRule: string;
-  hitRate: number;
+  hitRate: number | null;
 }
 
 export interface TableFieldItem {

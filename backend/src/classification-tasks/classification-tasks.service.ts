@@ -9,6 +9,7 @@ import {
   TemplateStatus,
 } from '@prisma/client';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { evaluateClassificationRules } from '../classification-rule-matcher';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClassificationTaskDto } from './dto/create-classification-task.dto';
 import { UpdateClassificationTaskDto } from './dto/update-classification-task.dto';
@@ -83,38 +84,6 @@ export class ClassificationTasksService {
     return executeAt ?? null;
   }
 
-  private matchRuleValue(value: string, matcher: string, expected: string) {
-    const normalizedValue = value.toLowerCase();
-    const normalizedExpected = expected.toLowerCase();
-
-    switch (matcher) {
-      case 'equals':
-        return normalizedValue === normalizedExpected;
-      case 'contains':
-        return normalizedExpected
-          .split(',')
-          .map((item) => item.trim())
-          .some((item) => item && normalizedValue.includes(item));
-      case 'prefix':
-        return normalizedValue.startsWith(normalizedExpected);
-      case 'suffix':
-        return normalizedValue.endsWith(normalizedExpected);
-      case 'regex':
-        try {
-          return new RegExp(expected, 'i').test(value);
-        } catch {
-          return false;
-        }
-      case 'enumContains':
-        return normalizedExpected
-          .split(',')
-          .map((item) => item.trim())
-          .some((item) => item && normalizedValue.includes(item));
-      default:
-        return false;
-    }
-  }
-
   private async loadTemplateDataTypes(templateId?: string | null) {
     const template =
       (templateId
@@ -167,6 +136,7 @@ export class ClassificationTasksService {
       columnComment: string | null;
       dataType: string;
       columnType: string;
+      sampleData?: unknown;
     },
     table: {
       id: string;
@@ -177,30 +147,33 @@ export class ClassificationTasksService {
       ReturnType<ClassificationTasksService['loadTemplateDataTypes']>
     >,
   ) {
+    const target = {
+      fieldName: column.columnName,
+      fieldComment: column.columnComment,
+      fieldType: column.columnType,
+      tableName: table.tableName,
+      tableComment: table.tableComment,
+      sampleData: Array.isArray(column.sampleData)
+        ? column.sampleData.filter(
+            (sample): sample is string => typeof sample === 'string',
+          )
+        : [],
+    };
     const candidates = dataTypes
       .map((dataType) => {
-        const score = dataType.rules.reduce((bestScore, rule) => {
-          const currentValue =
-            rule.target === 'fieldComment'
-              ? (column.columnComment ?? '')
-              : rule.target === 'fieldType'
-                ? column.columnType
-                : rule.target === 'tableName'
-                  ? table.tableName
-                  : rule.target === 'tableComment'
-                    ? (table.tableComment ?? '')
-                    : column.columnName;
-
-          if (!this.matchRuleValue(currentValue, rule.matcher, rule.value)) {
-            return bestScore;
-          }
-
-          return Math.max(bestScore, Number(rule.hitRate));
-        }, 0);
+        const evaluation = evaluateClassificationRules(
+          target,
+          dataType.rules.map((rule) => ({
+            target: rule.target,
+            matcher: rule.matcher,
+            value: rule.value,
+            hitRate: rule.hitRate ? Number(rule.hitRate) : null,
+          })),
+        );
 
         return {
           dataType,
-          score,
+          score: evaluation.score,
         };
       })
       .filter((item) => item.score > 0)
@@ -451,16 +424,24 @@ export class ClassificationTasksService {
 
         for (const table of asset.tables) {
           for (const column of table.columns) {
-            const classification = this.classifyColumn(column, table, dataTypes);
+            const classification = this.classifyColumn(
+              column,
+              table,
+              dataTypes,
+            );
 
-            if (this.dataLevelWeight(classification.dataLevel) > this.dataLevelWeight(highestLevel)) {
+            if (
+              this.dataLevelWeight(classification.dataLevel) >
+              this.dataLevelWeight(highestLevel)
+            ) {
               highestLevel = classification.dataLevel;
             }
 
             await this.prisma.dataAssetColumn.update({
               where: { id: column.id },
               data: {
-                classificationDataTypeId: classification.classificationDataTypeId,
+                classificationDataTypeId:
+                  classification.classificationDataTypeId,
                 dataCategory: classification.dataCategory,
                 dataLevel: classification.dataLevel,
                 isSensitive: classification.isSensitive,
@@ -474,8 +455,7 @@ export class ClassificationTasksService {
         await this.prisma.dataAsset.update({
           where: { id: assetId },
           data: {
-            dataLevel:
-              highestLevel ?? asset.dataLevel,
+            dataLevel: highestLevel ?? asset.dataLevel,
           },
         });
       }
@@ -520,8 +500,7 @@ export class ClassificationTasksService {
         targetType: 'classification-task',
         targetId: task.id,
         targetName: task.taskName,
-        detail:
-          error instanceof Error ? error.message : '分类分级任务执行失败',
+        detail: error instanceof Error ? error.message : '分类分级任务执行失败',
       });
       throw error;
     }

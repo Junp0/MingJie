@@ -175,7 +175,7 @@ const renderDeletedText = (
       deleted
         ? {
             textDecoration: 'line-through',
-            color: '#8c8c8c',
+            color: '#bfbfbf',
           }
         : undefined
     }

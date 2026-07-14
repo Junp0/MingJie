@@ -1,7 +1,7 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { useLocation } from '@umijs/max';
-import { Button, Card, Drawer, Empty, Space, Switch, Table, Tag, Tree, Typography, message } from 'antd';
+import { Button, Card, Drawer, Empty, Space, Table, Tree, Typography, message } from 'antd';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './index.less';
 import {
@@ -9,9 +9,8 @@ import {
   listClassificationTemplateRecords,
   type LevelDefinitionItem,
 } from '@/services/data-classification/templateStore';
-import {
-  listDatabaseInstances,
-} from '@/services/data-overview/overviewStore';
+import { listDatabaseInstances } from '@/services/data-overview/overviewStore';
+import { sortDeletedLast } from '@/utils/collection';
 import {
   buildSampleDataItems,
   createFieldDisplayColumns,
@@ -123,7 +122,7 @@ const getDatabaseFieldSummary = (database: DatabaseItem) => {
 };
 
 const renderDeletedText = (value: string, deleted: boolean) => (
-  <Text delete={deleted} type={deleted ? 'secondary' : undefined}>
+  <Text delete={deleted} style={deleted ? { color: '#bfbfbf' } : undefined}>
     {value}
   </Text>
 );
@@ -254,7 +253,6 @@ const TableDataList: React.FC = () => {
   const [sampleDrawerVisible, setSampleDrawerVisible] = useState(false);
   const [currentSampleData, setCurrentSampleData] = useState<SampleDataItem[]>([]);
   const [currentFieldName, setCurrentFieldName] = useState('');
-  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -313,26 +311,17 @@ const TableDataList: React.FC = () => {
 
   const visibleDatabaseInstances = useMemo(
     () =>
-      hideDeletedObjects
-        ? databaseInstances
-            .map((instance) => ({
-              ...instance,
-              databases: instance.databases
-                .filter((database) => !database.isDeleted)
-                .map((database) => ({
-                  ...database,
-                  tables: database.tables
-                    .filter((table) => !table.isDeleted)
-                    .map((table) => ({
-                      ...table,
-                      fields: table.fields.filter((field) => !field.isDeleted),
-                    })),
-                }))
-                .filter((database) => database.tables.length > 0),
-            }))
-            .filter((instance) => instance.databases.length > 0)
-        : databaseInstances,
-    [databaseInstances, hideDeletedObjects],
+      databaseInstances.map((instance) => ({
+        ...instance,
+        databases: sortDeletedLast(instance.databases).map((database) => ({
+          ...database,
+          tables: sortDeletedLast(database.tables).map((table) => ({
+            ...table,
+            fields: sortDeletedLast(table.fields),
+          })),
+        })),
+      })),
+    [databaseInstances],
   );
 
   const showSampleData = (record: FieldListItem) => {
@@ -394,7 +383,7 @@ const TableDataList: React.FC = () => {
 
   const currentTables = useMemo<TableListItem[]>(() => {
     if (currentDatabase && currentInstance) {
-      return currentDatabase.tables.map((table) => ({
+      return sortDeletedLast(currentDatabase.tables).map((table) => ({
         ...table,
         assetName: currentDatabase.assetName,
         port: currentDatabase.port,
@@ -404,7 +393,7 @@ const TableDataList: React.FC = () => {
       }));
     }
 
-    return databaseInstances.flatMap((instance) =>
+    return sortDeletedLast(databaseInstances.flatMap((instance) =>
       instance.databases.flatMap((database) =>
         database.tables.map((table) => ({
           ...table,
@@ -415,12 +404,12 @@ const TableDataList: React.FC = () => {
           databaseIsDeleted: database.isDeleted,
         })),
       ),
-    );
+    ));
   }, [currentDatabase, currentInstance, databaseInstances]);
 
   const currentFields = useMemo<FieldListItem[]>(() => {
     if (selectedTable) {
-      return selectedTable.fields.map((field) => ({
+      return sortDeletedLast(selectedTable.fields).map((field) => ({
         ...field,
         assetName: selectedTable.assetName,
         databaseName: selectedTable.databaseName,
@@ -432,20 +421,22 @@ const TableDataList: React.FC = () => {
     }
 
     if (currentDatabase && currentInstance) {
-      return currentDatabase.tables.flatMap((table) =>
-        table.fields.map((field) => ({
-          ...field,
-          assetName: currentDatabase.assetName,
-          databaseName: currentDatabase.name,
-          tableName: table.name,
-          port: currentDatabase.port,
-          instanceIp: currentInstance.ip,
-          fieldTable: table.name,
-        })),
+      return sortDeletedLast(
+        currentDatabase.tables.flatMap((table) =>
+          table.fields.map((field) => ({
+            ...field,
+            assetName: currentDatabase.assetName,
+            databaseName: currentDatabase.name,
+            tableName: table.name,
+            port: currentDatabase.port,
+            instanceIp: currentInstance.ip,
+            fieldTable: table.name,
+          })),
+        ),
       );
     }
 
-    return databaseInstances.flatMap((instance) =>
+    return sortDeletedLast(databaseInstances.flatMap((instance) =>
       instance.databases.flatMap((database) =>
         database.tables.flatMap((table) =>
           table.fields.map((field) => ({
@@ -459,7 +450,7 @@ const TableDataList: React.FC = () => {
           })),
         ),
       ),
-    );
+    ));
   }, [currentDatabase, currentInstance, selectedTable, databaseInstances]);
 
   useEffect(() => {
@@ -639,24 +630,11 @@ const TableDataList: React.FC = () => {
         <section className="tableSidePanel" style={{ width: '18%', minWidth: '220px' }}>
           <div className="tableSidePanelHeader">
             <span>表目录</span>
-            <Space size={8}>
-              <Text type="secondary">隐藏已删除</Text>
-              <Switch
-                checked={hideDeletedObjects}
-                onChange={(checked) => {
-                  setHideDeletedObjects(checked);
-                  actionRef.current?.reload();
-                }}
-              />
-            </Space>
           </div>
           <div className="tableSidePanelBody tableCatalogScroll">
             {currentInstance ? (
               <div className="tableCatalogList">
-                {(hideDeletedObjects
-                  ? currentTables.filter((table) => !table.isDeleted)
-                  : currentTables
-                ).map((table) => (
+                {currentTables.map((table) => (
                   <div
                     key={`${table.databaseName}-${table.id}`}
                     className="tableCatalogItem"
@@ -765,9 +743,7 @@ const TableDataList: React.FC = () => {
                   rootGroupName,
                 } = params as Record<string, any>;
 
-                let filteredData = hideDeletedObjects
-                  ? currentFields.filter((item) => !item.isDeleted)
-                  : currentFields;
+                let filteredData = sortDeletedLast(currentFields);
 
                 if (databaseName) {
                   filteredData = filteredData.filter((item) =>

@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreateRuleDto {
   @ApiProperty()
@@ -19,12 +27,16 @@ export class CreateRuleDto {
   @IsString()
   value!: string;
 
-  @ApiProperty({ example: 85 })
+  @ApiPropertyOptional({ example: 100, description: '仅样本数据规则需要配置' })
+  @ValidateIf(
+    (dto: CreateRuleDto) =>
+      dto.target === 'sampleData' || dto.hitRate !== undefined,
+  )
   @Type(() => Number)
-  @IsInt()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(100)
-  hitRate!: number;
+  hitRate?: number;
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()

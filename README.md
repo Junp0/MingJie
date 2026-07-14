@@ -89,6 +89,9 @@ Docker 部署成功后访问 `http://localhost:8000`，可以看到以下产品�
 
 ![MingJie 分类分级模板](docs/screenshots/classification-template.png)
 
+默认模板的标准依据、分级边界和规则维护方法见 [分类分级基线说明](docs/classification-grading-baseline.md)。
+内置加密与脱敏识别范围、格式来源和识别边界见 [加密与脱敏特征基线](docs/protection-feature-catalog.md)。
+
 ---
 
 ## 架构设计

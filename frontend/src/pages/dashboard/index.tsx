@@ -1,13 +1,22 @@
 import {
+  AppstoreOutlined,
   AuditOutlined,
   CheckCircleOutlined,
-  ClusterOutlined,
+  ClockCircleOutlined,
+  DatabaseOutlined,
+  FieldNumberOutlined,
+  ImportOutlined,
   LockOutlined,
+  ReloadOutlined,
+  RightOutlined,
   SafetyCertificateOutlined,
+  ScanOutlined,
+  TagsOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
-import { Link } from '@umijs/max';
 import { PageContainer } from '@ant-design/pro-components';
-import { Card, Col, Progress, Row, Skeleton } from 'antd';
+import { Link } from '@umijs/max';
+import { Button, Progress, Skeleton } from 'antd';
 import React, { useMemo } from 'react';
 import { collectDataTypes } from '@/services/data-classification/templateStore';
 import { parseBeijingDateTime } from '@/utils/datetime';
@@ -18,18 +27,23 @@ const percent = (value: number, total: number) =>
   total > 0 ? Math.round((value / total) * 100) : 0;
 
 const LEVEL_META = [
-  { code: 'L1', label: '公开级', color: '#6bcf78' },
-  { code: 'L2', label: '内部级', color: '#6ea5ff' },
-  { code: 'L3', label: '敏感级', color: '#ffc85f' },
-  { code: 'L4', label: '重要级', color: '#ff9c72' },
-  { code: 'L5', label: '核心级', color: '#f8758a' },
-  { code: 'UNCLASSIFIED', label: '未分级', color: '#bcc8d8' },
+  { code: 'L1', label: '公开级', color: '#52c41a' },
+  { code: 'L2', label: '内部级', color: '#1677ff' },
+  { code: 'L3', label: '敏感级', color: '#faad14' },
+  { code: 'L4', label: '重要级', color: '#fa8c16' },
+  { code: 'L5', label: '核心级', color: '#f5222d' },
+  { code: 'UNCLASSIFIED', label: '未分级', color: '#bfbfbf' },
 ] as const;
 
 const DashboardPage: React.FC = () => {
   const {
     loading,
+    refresh,
+    lastUpdatedAt,
+    importTasks,
+    assetGroups,
     dataAssets,
+    databaseInstances,
     classificationTasks,
     templateSummaries,
     templates,
@@ -40,6 +54,7 @@ const DashboardPage: React.FC = () => {
     fullDataItems,
     missedDataItems,
     auditLogs,
+    auditTotal,
   } = useDashboardData();
 
   const templateDataTypes = useMemo(
@@ -54,18 +69,43 @@ const DashboardPage: React.FC = () => {
     () => dataAssets.filter((asset) => !asset.isDeleted),
     [dataAssets],
   );
-
   const activeFields = useMemo(
     () =>
       fullDataItems.filter(
-        (item) => !item.isDeleted && !item.tableIsDeleted && !item.databaseIsDeleted,
+        (item) =>
+          !item.isDeleted && !item.tableIsDeleted && !item.databaseIsDeleted,
       ),
     [fullDataItems],
   );
 
-  const classifiedFieldCount = activeFields.filter((item) => Boolean(item.levelCode)).length;
-  const unclassifiedFieldCount = Math.max(activeFields.length - classifiedFieldCount, 0);
-  const sensitiveFieldCount = activeFields.filter((item) => item.isSensitive).length;
+  const databaseCount = databaseInstances.reduce(
+    (total, instance) =>
+      total +
+      instance.databases.filter((database) => !database.isDeleted).length,
+    0,
+  );
+  const tableCount = databaseInstances.reduce(
+    (total, instance) =>
+      total +
+      instance.databases.reduce(
+        (databaseTotal, database) =>
+          databaseTotal +
+          database.tables.filter((table) => !table.isDeleted).length,
+        0,
+      ),
+    0,
+  );
+
+  const classifiedFieldCount = activeFields.filter((item) =>
+    Boolean(item.levelCode),
+  ).length;
+  const unclassifiedFieldCount = Math.max(
+    activeFields.length - classifiedFieldCount,
+    0,
+  );
+  const sensitiveFieldCount = activeFields.filter(
+    (item) => item.isSensitive,
+  ).length;
   const highLevelFieldCount = activeFields.filter(
     (item) => item.levelCode === 'L4' || item.levelCode === 'L5',
   ).length;
@@ -79,7 +119,6 @@ const DashboardPage: React.FC = () => {
   const maskingPendingCount = activeFields.filter(
     (item) => item.maskingStatus === 'recommended',
   ).length;
-
   const encryptionApplicableCount = activeFields.filter(
     (item) => item.encryptionStatus !== 'not_required',
   ).length;
@@ -90,9 +129,17 @@ const DashboardPage: React.FC = () => {
     (item) => item.encryptionStatus === 'recommended',
   ).length;
 
-  const failedImportCount = 0;
+  const failedImportCount = importTasks.filter(
+    (task) => task.status === 'failed',
+  ).length;
+  const runningImportCount = importTasks.filter(
+    (task) => task.status === 'running',
+  ).length;
   const failedClassificationCount = classificationTasks.filter(
     (task) => task.status === 'failed',
+  ).length;
+  const runningClassificationCount = classificationTasks.filter(
+    (task) => task.status === 'running',
   ).length;
   const pendingClassificationCount = classificationTasks.filter(
     (task) => task.status === 'pending',
@@ -100,12 +147,16 @@ const DashboardPage: React.FC = () => {
   const waitingImportTriggerCount = classificationTasks.filter(
     (task) => task.status === 'waiting_import',
   ).length;
+  const pendingScanCount = autoScanResults.filter(
+    (item) => item.status === 'pending',
+  ).length;
 
-  const pendingScanCount = autoScanResults.filter((item) => item.status === 'pending').length;
-  const processedScanCount = autoScanResults.filter((item) => item.status !== 'pending').length;
-
-  const activeTemplateCount = templateSummaries.filter((item) => item.status === 'active').length;
-  const draftTemplateCount = templateSummaries.filter((item) => item.status === 'draft').length;
+  const activeTemplateCount = templateSummaries.filter(
+    (item) => item.status === 'active',
+  ).length;
+  const draftTemplateCount = templateSummaries.filter(
+    (item) => item.status === 'draft',
+  ).length;
   const inactiveTemplateCount = templateSummaries.filter(
     (item) => item.status === 'inactive',
   ).length;
@@ -124,23 +175,36 @@ const DashboardPage: React.FC = () => {
   const activeEncryptionFeatureCount = encryptionFeatures.filter(
     (item) => item.status === 'active',
   ).length;
-  const inactiveFeatureCount =
-    maskingFeatures.length +
-    encryptionFeatures.length -
-    activeMaskingFeatureCount -
-    activeEncryptionFeatureCount;
-
-  const ownerMissingAssetCount = activeAssets.filter((asset) => !asset.owner).length;
+  const ownerMissingAssetCount = activeAssets.filter(
+    (asset) => !asset.owner,
+  ).length;
   const departmentMissingAssetCount = activeAssets.filter(
     (asset) => !asset.department,
   ).length;
-
   const auditFailureCount24h = auditLogs.filter((item) => {
     if (item.result !== 'FAILED') return false;
     const createdAt = parseBeijingDateTime(item.createdAt);
-    if (!createdAt) return false;
-    return Date.now() - createdAt.valueOf() <= 24 * 60 * 60 * 1000;
+    return createdAt
+      ? Date.now() - createdAt.valueOf() <= 24 * 60 * 60 * 1000
+      : false;
   }).length;
+
+  const classificationCoverage = percent(
+    classifiedFieldCount,
+    activeFields.length,
+  );
+  const maskingCoverage = percent(
+    maskingConfirmedCount,
+    maskingApplicableCount,
+  );
+  const encryptionCoverage = percent(
+    encryptionConfirmedCount,
+    encryptionApplicableCount,
+  );
+  const pendingProtectionCount = maskingPendingCount + encryptionPendingCount;
+  const enabledScanRuleCount = autoScanRules.filter(
+    (rule) => rule.status === 'enabled',
+  ).length;
 
   const levelItems = LEVEL_META.map((item) => ({
     ...item,
@@ -152,61 +216,44 @@ const DashboardPage: React.FC = () => {
 
   const topStats = [
     {
-      title: '分类覆盖率',
-      value: `${percent(classifiedFieldCount, activeFields.length)}%`,
-      detail: `${classifiedFieldCount}/${activeFields.length} 个字段已完成分级`,
-      tone: 'toneBlue',
+      title: '纳管数据资产',
+      value: activeAssets.length,
+      unit: '项',
+      detail: `${databaseCount} 个数据库 · ${tableCount} 张表`,
+      icon: <DatabaseOutlined />,
+      tone: 'blue',
+      path: '/data-assets/data-asset-list',
     },
     {
-      title: '敏感字段总量',
-      value: `${sensitiveFieldCount}`,
-      detail: `${highLevelFieldCount} 个重要/核心级字段`,
-      tone: 'toneAmber',
+      title: '分类分级覆盖率',
+      value: classificationCoverage,
+      unit: '%',
+      detail: `${classifiedFieldCount} / ${activeFields.length} 个字段`,
+      icon: <TagsOutlined />,
+      tone: 'green',
+      path: '/data-overview/full-data-list',
     },
     {
-      title: '保护待落实',
-      value: `${maskingPendingCount + encryptionPendingCount}`,
-      detail: `脱敏待确认 ${maskingPendingCount} / 加密待确认 ${encryptionPendingCount}`,
-      tone: 'toneRose',
+      title: '敏感字段',
+      value: sensitiveFieldCount,
+      unit: '个',
+      detail: `其中重要、核心级 ${highLevelFieldCount} 个`,
+      icon: <SafetyCertificateOutlined />,
+      tone: 'orange',
+      path: '/data-overview/full-data-list',
     },
     {
-      title: '高优先级待办',
-      value: `${
-        failedClassificationCount + failedImportCount + missedDataItems.length + pendingScanCount
-      }`,
-      detail: `失败任务 ${failedClassificationCount + failedImportCount} / 未命中 ${missedDataItems.length}`,
-      tone: 'toneMint',
-    },
-  ];
-
-  const progressItems = [
-    {
-      title: '字段分类完成度',
-      value: `${classifiedFieldCount}/${activeFields.length}`,
-      percentValue: percent(classifiedFieldCount, activeFields.length),
-      desc: `${unclassifiedFieldCount} 个字段仍未完成分级`,
-      strokeColor: '#61c0ff',
-    },
-    {
-      title: '脱敏措施落实度',
-      value: `${maskingConfirmedCount}/${maskingApplicableCount}`,
-      percentValue: percent(maskingConfirmedCount, maskingApplicableCount),
-      desc: `${maskingPendingCount} 个敏感字段待确认脱敏`,
-      strokeColor: '#d8dee8',
-    },
-    {
-      title: '加密措施落实度',
-      value: `${encryptionConfirmedCount}/${encryptionApplicableCount}`,
-      percentValue: percent(encryptionConfirmedCount, encryptionApplicableCount),
-      desc: `${encryptionPendingCount} 个敏感字段待确认加密`,
-      strokeColor: '#d8dee8',
-    },
-    {
-      title: '自动发现处置度',
-      value: `${processedScanCount}/${autoScanResults.length}`,
-      percentValue: percent(processedScanCount, autoScanResults.length),
-      desc: `${pendingScanCount} 条发现结果待认领`,
-      strokeColor: '#61c0ff',
+      title: '待处理事项',
+      value:
+        missedDataItems.length +
+        pendingScanCount +
+        failedImportCount +
+        failedClassificationCount,
+      unit: '项',
+      detail: `失败任务 ${failedImportCount + failedClassificationCount} · 未命中 ${missedDataItems.length}`,
+      icon: <WarningOutlined />,
+      tone: 'red',
+      path: '/data-overview/missed-data-list',
     },
   ];
 
@@ -214,79 +261,125 @@ const DashboardPage: React.FC = () => {
     {
       title: '未命中字段',
       value: missedDataItems.length,
-      desc: '说明现有模板规则仍有识别盲区，需要补充规则或新增数据类型。',
-      tone: 'todoRose',
+      desc: '现有分类规则未能识别，需补充规则或数据类型',
+      level: 'urgent',
       path: '/data-overview/missed-data-list',
+    },
+    {
+      title: '失败任务',
+      value: failedImportCount + failedClassificationCount,
+      desc: `导入失败 ${failedImportCount}，分类失败 ${failedClassificationCount}`,
+      level: 'urgent',
+      path: '/data-classification/tasks',
     },
     {
       title: '未分类字段',
       value: unclassifiedFieldCount,
-      desc: '字段已入库但尚未完成分级，容易形成治理断层。',
-      tone: 'todoAmber',
+      desc: '已纳管但尚未完成分类分级',
+      level: 'warning',
       path: '/data-overview/full-data-list',
     },
     {
-      title: '异常分类任务',
-      value: failedClassificationCount + pendingClassificationCount,
-      desc: `失败 ${failedClassificationCount}，等待/待执行 ${pendingClassificationCount}。`,
-      tone: 'todoMint',
-      path: '/data-classification/tasks',
+      title: '保护措施待确认',
+      value: pendingProtectionCount,
+      desc: `脱敏 ${maskingPendingCount}，加密 ${encryptionPendingCount}`,
+      level: 'warning',
+      path: '/data-overview/full-data-list',
     },
     {
       title: '待认领发现结果',
       value: pendingScanCount,
-      desc: `已启用 ${autoScanRules.filter((rule) => rule.status === 'enabled').length} 条自动发现规则。`,
-      tone: 'todoAmber',
+      desc: `${enabledScanRuleCount} 条自动发现规则正在启用`,
+      level: 'normal',
       path: '/data-assets/auto-scan',
     },
     {
-      title: '模板/规则缺口',
-      value: rulelessDataTypeCount + draftTemplateCount + inactiveTemplateCount,
-      desc: `无规则数据类型 ${rulelessDataTypeCount}，草稿/停用模板 ${draftTemplateCount + inactiveTemplateCount}。`,
-      tone: 'todoMint',
-      path: '/data-classification/templates',
-    },
-    {
-      title: '责任归属缺失',
+      title: '资产责任信息缺失',
       value: ownerMissingAssetCount + departmentMissingAssetCount,
-      desc: `负责人缺失 ${ownerMissingAssetCount}，部门缺失 ${departmentMissingAssetCount}。`,
-      tone: 'todoMint',
+      desc: `负责人缺失 ${ownerMissingAssetCount}，部门缺失 ${departmentMissingAssetCount}`,
+      level: 'normal',
       path: '/data-assets/data-asset-list',
     },
-  ];
+  ].sort((left, right) => right.value - left.value);
 
-  const summarySections = [
+  const healthGroups = [
     {
-      title: '模板与规则健康度',
-      icon: <CheckCircleOutlined />,
+      title: '数据接入',
+      icon: <ImportOutlined />,
+      primary: `${activeAssets.length}`,
+      primaryLabel: '项资产已纳管',
+      path: '/data-assets/data-import',
       rows: [
-        { label: '启用模板', value: `${activeTemplateCount}/${templateSummaries.length}` },
-        { label: '草稿模板', value: `${draftTemplateCount}` },
-        { label: '停用模板', value: `${inactiveTemplateCount}` },
-        { label: '识别规则总数', value: `${totalTemplateRuleCount}` },
-        { label: '无规则数据类型', value: `${rulelessDataTypeCount}` },
+        { label: '资产分组', value: assetGroups.length },
+        { label: '运行中导入任务', value: runningImportCount },
+        {
+          label: '失败导入任务',
+          value: failedImportCount,
+          alert: failedImportCount > 0,
+        },
       ],
     },
     {
-      title: '保护策略落地',
+      title: '模板与规则',
+      icon: <AppstoreOutlined />,
+      primary: `${totalTemplateRuleCount}`,
+      primaryLabel: '条识别规则',
+      path: '/data-classification/templates',
+      rows: [
+        {
+          label: '启用模板',
+          value: `${activeTemplateCount}/${templateSummaries.length}`,
+        },
+        {
+          label: '草稿或停用模板',
+          value: draftTemplateCount + inactiveTemplateCount,
+        },
+        {
+          label: '无规则数据类型',
+          value: rulelessDataTypeCount,
+          alert: rulelessDataTypeCount > 0,
+        },
+      ],
+    },
+    {
+      title: '保护策略',
       icon: <LockOutlined />,
+      primary: `${pendingProtectionCount}`,
+      primaryLabel: '项措施待确认',
+      path: '/data-classification/masking-features',
       rows: [
-        { label: '脱敏特征启用', value: `${activeMaskingFeatureCount}/${maskingFeatures.length}` },
-        { label: '加密特征启用', value: `${activeEncryptionFeatureCount}/${encryptionFeatures.length}` },
-        { label: '停用治理特征', value: `${inactiveFeatureCount}` },
-        { label: '脱敏确认字段', value: `${maskingConfirmedCount}` },
-        { label: '加密已确认字段', value: `${encryptionConfirmedCount}` },
+        {
+          label: '启用脱敏特征',
+          value: `${activeMaskingFeatureCount}/${maskingFeatures.length}`,
+        },
+        {
+          label: '启用加密特征',
+          value: `${activeEncryptionFeatureCount}/${encryptionFeatures.length}`,
+        },
+        { label: '重要/核心字段', value: highLevelFieldCount },
       ],
     },
     {
-      title: '任务执行闭环',
+      title: '任务与审计',
       icon: <AuditOutlined />,
+      primary: `${runningClassificationCount}`,
+      primaryLabel: '个分类任务运行中',
+      path: '/audit-logs',
       rows: [
-        { label: '导入失败任务', value: `${failedImportCount}` },
-        { label: '分类失败任务', value: `${failedClassificationCount}` },
-        { label: '等待导入触发', value: `${waitingImportTriggerCount}` },
-        { label: '待执行分类任务', value: `${pendingClassificationCount}` },
-        { label: '24小时审计失败', value: `${auditFailureCount24h}` },
+        {
+          label: '等待或待执行',
+          value: waitingImportTriggerCount + pendingClassificationCount,
+        },
+        {
+          label: '分类失败任务',
+          value: failedClassificationCount,
+          alert: failedClassificationCount > 0,
+        },
+        {
+          label: '24 小时审计失败',
+          value: auditFailureCount24h,
+          alert: auditFailureCount24h > 0,
+        },
       ],
     },
   ];
@@ -294,8 +387,8 @@ const DashboardPage: React.FC = () => {
   if (loading && !activeFields.length && !templateSummaries.length) {
     return (
       <PageContainer pageHeaderRender={false} ghost>
-        <div className="dashboardPage">
-          <Skeleton active paragraph={{ rows: 16 }} />
+        <div className="dashboardPage dashboardLoading">
+          <Skeleton active paragraph={{ rows: 14 }} />
         </div>
       </PageContainer>
     );
@@ -303,105 +396,225 @@ const DashboardPage: React.FC = () => {
 
   return (
     <PageContainer pageHeaderRender={false} ghost>
-      <div className="dashboardPage">
-        <Row gutter={[16, 16]} className="sectionRow">
+      <main className="dashboardPage">
+        <header className="dashboardHeader">
+          <div>
+            <div className="dashboardEyebrow">DATA GOVERNANCE OVERVIEW</div>
+            <h1>数据治理总览</h1>
+            <p>聚焦数据纳管、分类覆盖、保护策略和待处理风险。</p>
+          </div>
+          <div className="headerActions">
+            <span className="updatedAt">
+              <ClockCircleOutlined /> 更新于 {lastUpdatedAt || '--'}
+            </span>
+            <Button
+              icon={<ReloadOutlined spin={loading} />}
+              onClick={refresh}
+              loading={loading}
+            >
+              刷新数据
+            </Button>
+          </div>
+        </header>
+
+        <section className="metricGrid" aria-label="核心指标">
           {topStats.map((item) => (
-            <Col xs={24} sm={12} xl={6} key={item.title}>
-              <Card bordered={false} className={`topStatCard ${item.tone}`}>
-                <div className="topStatValue">{item.value}</div>
-                <div className="topStatTitle">{item.title}</div>
-                <div className="topStatDetail">{item.detail}</div>
-              </Card>
-            </Col>
+            <Link
+              to={item.path}
+              className={`metricItem metric-${item.tone}`}
+              key={item.title}
+            >
+              <div className="metricHead">
+                <span className="metricIcon">{item.icon}</span>
+                <span className="metricTitle">{item.title}</span>
+                <RightOutlined className="metricArrow" />
+              </div>
+              <div className="metricValue">
+                {item.value}
+                <span>{item.unit}</span>
+              </div>
+              <div className="metricDetail">{item.detail}</div>
+            </Link>
           ))}
-        </Row>
+        </section>
 
-        <Row gutter={[16, 16]} className="sectionRow">
-          <Col xs={24} xl={17}>
-            <Card title="分类分级态势" bordered={false} className="panelCard">
-              <div className="levelTrack">
-                {levelItems.map((item) => (
-                  <div
-                    key={item.code}
-                    className="levelTrackSegment"
-                    style={{
-                      width: `${activeFields.length ? (item.value / activeFields.length) * 100 : 0}%`,
-                      background: item.color,
-                    }}
-                  />
-                ))}
+        <div className="dashboardMainGrid">
+          <section className="dashboardPanel coveragePanel">
+            <div className="panelHeading">
+              <div>
+                <h2>治理覆盖</h2>
+                <p>字段分类分布与敏感数据保护落实情况</p>
+              </div>
+              <Link to="/data-overview/full-data-list" className="panelLink">
+                查看字段明细 <RightOutlined />
+              </Link>
+            </div>
+
+            <div className="classificationOverview">
+              <div className="coverageScore">
+                <Progress
+                  type="circle"
+                  percent={classificationCoverage}
+                  size={128}
+                  strokeWidth={9}
+                  strokeColor="#1677ff"
+                  trailColor="#edf1f5"
+                />
+                <strong>分类分级覆盖率</strong>
+                <span>{unclassifiedFieldCount} 个字段未分级</span>
               </div>
 
-              <div className="levelLegend">
-                {levelItems.map((item) => (
-                  <div key={item.code} className="legendItem">
-                    <span className="legendDot" style={{ background: item.color }} />
-                    <span className="legendLabel">{item.label}</span>
-                    <strong>{item.value}</strong>
-                  </div>
-                ))}
-              </div>
-
-              <div className="progressGroup">
-                {progressItems.map((item) => (
-                  <div key={item.title} className="progressCard">
-                    <div className="progressCardHead">
-                      <span className="progressCardTitle">{item.title}</span>
-                      <strong className="progressCardValue">{item.value}</strong>
-                    </div>
-                    <Progress
-                      percent={item.percentValue}
-                      showInfo={false}
-                      strokeColor={item.strokeColor}
-                      trailColor="rgba(219, 227, 238, 0.9)"
-                    />
-                    <div className="progressCardDesc">{item.desc}</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </Col>
-
-          <Col xs={24} xl={7}>
-            <Card title="管理员待办" bordered={false} className="panelCard">
-              <div className="todoList">
-                {todoItems.map((item) => (
-                  <Link to={item.path} key={item.title} className="todoLink">
-                    <div className={`todoCard ${item.tone}`}>
-                      <div className="todoCardHead">
-                        <span className="todoCardTitle">{item.title}</span>
-                        <strong className="todoCardValue">{item.value}</strong>
-                      </div>
-                      <div className="todoCardDesc">{item.desc}</div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </Card>
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]}>
-          {summarySections.map((section) => (
-            <Col xs={24} xl={8} key={section.title}>
-              <Card bordered={false} className="panelCard bottomCard">
-                <div className="bottomCardHead">
-                  <span className="bottomCardIcon">{section.icon}</span>
-                  <span className="bottomCardTitle">{section.title}</span>
+              <div className="levelDistribution">
+                <div className="distributionHeader">
+                  <span>字段分级分布</span>
+                  <strong>{activeFields.length} 个字段</strong>
                 </div>
-                <div className="bottomCardBody">
-                  {section.rows.map((row) => (
-                    <div key={row.label} className="bottomCardRow">
-                      <span className="bottomCardLabel">{row.label}</span>
-                      <strong className="bottomCardValue">{row.value}</strong>
+                <div
+                  className="levelTrack"
+                  role="img"
+                  aria-label="字段分级分布图"
+                >
+                  {levelItems.map((item) => (
+                    <div
+                      key={item.code}
+                      className="levelTrackSegment"
+                      style={{
+                        width: `${activeFields.length ? (item.value / activeFields.length) * 100 : 0}%`,
+                        background: item.color,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div className="levelLegend">
+                  {levelItems.map((item) => (
+                    <div key={item.code} className="legendItem">
+                      <span
+                        className="legendDot"
+                        style={{ background: item.color }}
+                      />
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
                     </div>
                   ))}
                 </div>
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      </div>
+              </div>
+            </div>
+
+            <div className="protectionGrid">
+              <div className="protectionItem">
+                <div className="protectionIcon">
+                  <SafetyCertificateOutlined />
+                </div>
+                <div className="protectionContent">
+                  <div className="protectionHead">
+                    <span>脱敏措施落实</span>
+                    <strong>{maskingCoverage}%</strong>
+                  </div>
+                  <Progress
+                    percent={maskingCoverage}
+                    showInfo={false}
+                    strokeColor="#13a8a8"
+                  />
+                  <p>
+                    {maskingConfirmedCount} 个已确认，{maskingPendingCount}{' '}
+                    个待确认
+                  </p>
+                </div>
+              </div>
+              <div className="protectionItem">
+                <div className="protectionIcon protectionIconPurple">
+                  <LockOutlined />
+                </div>
+                <div className="protectionContent">
+                  <div className="protectionHead">
+                    <span>加密措施落实</span>
+                    <strong>{encryptionCoverage}%</strong>
+                  </div>
+                  <Progress
+                    percent={encryptionCoverage}
+                    showInfo={false}
+                    strokeColor="#722ed1"
+                  />
+                  <p>
+                    {encryptionConfirmedCount} 个已确认，
+                    {encryptionPendingCount} 个待确认
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="dashboardPanel todoPanel">
+            <div className="panelHeading">
+              <div>
+                <h2>优先处理</h2>
+                <p>按影响数量排序的治理事项</p>
+              </div>
+              <span className="todoTotal">
+                {todoItems.reduce((sum, item) => sum + item.value, 0)}
+              </span>
+            </div>
+            <div className="todoList">
+              {todoItems.map((item) => (
+                <Link to={item.path} key={item.title} className="todoItem">
+                  <span className={`todoIndicator ${item.level}`} />
+                  <span className="todoContent">
+                    <strong>{item.title}</strong>
+                    <small>{item.desc}</small>
+                  </span>
+                  <span className="todoValue">{item.value}</span>
+                  <RightOutlined className="todoArrow" />
+                </Link>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <section className="dashboardPanel healthPanel">
+          <div className="panelHeading">
+            <div>
+              <h2>运行健康度</h2>
+              <p>从数据接入到审计闭环的关键运行状态</p>
+            </div>
+            <span className="auditSummary">
+              <FieldNumberOutlined /> 累计审计记录 {auditTotal}
+            </span>
+          </div>
+          <div className="healthGrid">
+            {healthGroups.map((group) => (
+              <Link to={group.path} className="healthGroup" key={group.title}>
+                <div className="healthGroupHead">
+                  <span className="healthIcon">{group.icon}</span>
+                  <strong>{group.title}</strong>
+                  <RightOutlined />
+                </div>
+                <div className="healthPrimary">
+                  <strong>{group.primary}</strong>
+                  <span>{group.primaryLabel}</span>
+                </div>
+                <div className="healthRows">
+                  {group.rows.map((row) => (
+                    <div className="healthRow" key={row.label}>
+                      <span>{row.label}</span>
+                      <strong className={row.alert ? 'alertValue' : ''}>
+                        {row.value}
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <div className="dashboardFootnote">
+          <CheckCircleOutlined />{' '}
+          当前统计已排除被删除的数据资产、数据库、数据表及字段
+          <span>
+            <ScanOutlined /> 自动发现规则启用 {enabledScanRuleCount} 条
+          </span>
+        </div>
+      </main>
     </PageContainer>
   );
 };

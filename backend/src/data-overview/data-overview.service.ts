@@ -5,6 +5,7 @@ import {
   ProtectionFeatureType,
   TemplateStatus,
 } from '@prisma/client';
+import { evaluateClassificationRules } from '../classification-rule-matcher';
 import { PrismaService } from '../prisma/prisma.service';
 
 type OverviewDataLevel = 'public' | 'internal' | 'confidential' | 'secret';
@@ -22,7 +23,7 @@ type ClassificationCandidateConfig = {
     target: string;
     matcher: string;
     value: string;
-    hitRate: number;
+    hitRate: number | null;
   }>;
 };
 
@@ -70,7 +71,7 @@ export interface MissedDataRecord extends Omit<OverviewFieldRecord, 'status'> {
   key: string;
   lastCheckTime: string;
   closestClassificationRule: string;
-  hitRate: number;
+  hitRate: number | null;
 }
 
 export interface TableFieldRecord {
@@ -134,7 +135,9 @@ export interface DatabaseInstanceRecord {
 export class DataOverviewService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private mapPersistedLevel(level?: DataLevel | null): OverviewDataLevel | null {
+  private mapPersistedLevel(
+    level?: DataLevel | null,
+  ): OverviewDataLevel | null {
     if (!level) return null;
     if (level === 'PUBLIC') return 'public';
     if (level === 'CONFIDENTIAL') return 'confidential';
@@ -165,7 +168,10 @@ export class DataOverviewService {
 
   private formatDateTime(value?: Date | null) {
     if (!value) return '';
-    return value.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+    return value
+      .toISOString()
+      .replace('T', ' ')
+      .replace(/\.\d{3}Z$/, '');
   }
 
   private createPathMap(items: PathNode[]): Map<string, PathNode> {
@@ -185,7 +191,9 @@ export class DataOverviewService {
 
     while (current) {
       pathNames.unshift(current.name);
-      current = current.parentId ? nodeMap.get(current.parentId) ?? null : null;
+      current = current.parentId
+        ? (nodeMap.get(current.parentId) ?? null)
+        : null;
     }
 
     return pathNames;
@@ -204,8 +212,11 @@ export class DataOverviewService {
         ? [normalizedFallback]
         : [];
     const groupName =
-      assetGroupPathNames[assetGroupPathNames.length - 1] || normalizedFallback || '';
-    const rootGroupName = assetGroupPathNames[0] || normalizedFallback || '未分组';
+      assetGroupPathNames[assetGroupPathNames.length - 1] ||
+      normalizedFallback ||
+      '';
+    const rootGroupName =
+      assetGroupPathNames[0] || normalizedFallback || '未分组';
 
     return {
       groupName,
@@ -222,7 +233,8 @@ export class DataOverviewService {
   ) {
     const normalizedDataTypeName = dataTypeName?.trim() || '';
     const normalizedCategoryName = fallbackCategoryName?.trim() || '';
-    const displayName = normalizedDataTypeName || normalizedCategoryName || '未分类';
+    const displayName =
+      normalizedDataTypeName || normalizedCategoryName || '未分类';
     const resolvedCategoryPath = this.buildPathNames(
       categoryId,
       classificationCategoryMap,
@@ -232,7 +244,9 @@ export class DataOverviewService {
       : normalizedCategoryName && normalizedCategoryName !== displayName
         ? [normalizedCategoryName]
         : [];
-    const classificationPathNames = [...categoryPathNames, displayName].filter(Boolean);
+    const classificationPathNames = [...categoryPathNames, displayName].filter(
+      Boolean,
+    );
 
     return {
       dataCategory:
@@ -247,38 +261,41 @@ export class DataOverviewService {
   }
 
   private async getOverviewReferenceData(): Promise<OverviewReferenceData> {
-    const [assetGroups, classificationCategories, templates] = await Promise.all([
-      this.prisma.assetGroup.findMany({
-        select: {
-          id: true,
-          name: true,
-          parentId: true,
-        },
-      }),
-      this.prisma.classificationCategory.findMany({
-        select: {
-          id: true,
-          name: true,
-          parentId: true,
-        },
-      }),
-      this.prisma.classificationTemplate.findMany({
-        select: {
-          status: true,
-          createdAt: true,
-          levelDefinitions: {
-            select: {
-              code: true,
-              color: true,
+    const [assetGroups, classificationCategories, templates] =
+      await Promise.all([
+        this.prisma.assetGroup.findMany({
+          select: {
+            id: true,
+            name: true,
+            parentId: true,
+          },
+        }),
+        this.prisma.classificationCategory.findMany({
+          select: {
+            id: true,
+            name: true,
+            parentId: true,
+          },
+        }),
+        this.prisma.classificationTemplate.findMany({
+          select: {
+            status: true,
+            createdAt: true,
+            levelDefinitions: {
+              select: {
+                code: true,
+                color: true,
+              },
             },
           },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
 
     const activeTemplate =
-      templates.find((item) => item.status === TemplateStatus.ACTIVE) ?? templates[0] ?? null;
+      templates.find((item) => item.status === TemplateStatus.ACTIVE) ??
+      templates[0] ??
+      null;
     const levelColorMap = new Map<OverviewLevelCode, string>();
 
     activeTemplate?.levelDefinitions.forEach((level) => {
@@ -340,14 +357,19 @@ export class DataOverviewService {
 
   private inferSqlType(fieldName: string) {
     if (fieldName.includes('amount')) return 'DECIMAL(10,2)';
-    if (fieldName.includes('time') || fieldName.includes('date')) return 'DATETIME';
+    if (fieldName.includes('time') || fieldName.includes('date'))
+      return 'DATETIME';
     if (fieldName.includes('id')) return 'VARCHAR(32)';
     if (fieldName.includes('phone')) return 'VARCHAR(20)';
     if (fieldName.includes('email')) return 'VARCHAR(100)';
     return 'VARCHAR(255)';
   }
 
-  private mapDataLevel(code?: string | null, isSensitive?: boolean, needEncrypt?: boolean): OverviewDataLevel {
+  private mapDataLevel(
+    code?: string | null,
+    isSensitive?: boolean,
+    needEncrypt?: boolean,
+  ): OverviewDataLevel {
     if (code === 'L1') return 'public';
     if (code === 'L2') return 'internal';
     if (code === 'L3') return 'confidential';
@@ -434,35 +456,7 @@ export class DataOverviewService {
     return ['sample_value'];
   }
 
-  private matchProtectionFeatureValue(value: string, matcher: string, expected: string) {
-    const normalizedValue = value.toLowerCase();
-    const normalizedExpected = expected.toLowerCase();
-
-    switch (matcher) {
-      case 'equals':
-        return normalizedValue === normalizedExpected;
-      case 'contains':
-      case 'enumContains':
-        return normalizedExpected
-          .split(',')
-          .map((item) => item.trim())
-          .some((item) => item && normalizedValue.includes(item));
-      case 'prefix':
-        return normalizedValue.startsWith(normalizedExpected);
-      case 'suffix':
-        return normalizedValue.endsWith(normalizedExpected);
-      case 'regex':
-        try {
-          return new RegExp(expected, 'i').test(value);
-        } catch {
-          return false;
-        }
-      default:
-        return false;
-    }
-  }
-
-  private matchClassificationRuleValue(
+  private matchProtectionFeatureValue(
     value: string,
     matcher: string,
     expected: string,
@@ -501,49 +495,32 @@ export class DataOverviewService {
       fieldType: string;
       tableName: string;
       tableComment?: string | null;
+      sampleData?: string[];
     },
     dataTypes: ClassificationCandidateConfig[],
   ) {
     const candidates = dataTypes
       .map((dataType) => {
-        const hitRate = dataType.rules.reduce((bestScore, rule) => {
-          const currentValue =
-            rule.target === 'fieldComment'
-              ? (target.fieldComment ?? '')
-              : rule.target === 'fieldType'
-                ? target.fieldType
-                : rule.target === 'tableName'
-                  ? target.tableName
-                  : rule.target === 'tableComment'
-                    ? (target.tableComment ?? '')
-                    : target.fieldName;
-
-          return this.matchClassificationRuleValue(
-            currentValue,
-            rule.matcher,
-            rule.value,
-          )
-            ? Math.max(bestScore, Number(rule.hitRate))
-            : bestScore;
-        }, 0);
+        const bestRule = evaluateClassificationRules(target, dataType.rules);
 
         return {
           name: dataType.name,
-          hitRate,
+          score: bestRule.score,
+          hitRate: bestRule.hitRate,
         };
       })
       .sort((left, right) => {
-        if (right.hitRate !== left.hitRate) {
-          return right.hitRate - left.hitRate;
+        if (right.score !== left.score) {
+          return right.score - left.score;
         }
         return 0;
       });
 
     const bestCandidate = candidates[0];
-    if (!bestCandidate || bestCandidate.hitRate <= 0) {
+    if (!bestCandidate || bestCandidate.score <= 0) {
       return {
         closestClassificationRule: '未命中',
-        hitRate: 0,
+        hitRate: null,
       };
     }
 
@@ -569,7 +546,11 @@ export class DataOverviewService {
     const bestHitRate = normalizedSamples.length
       ? features.reduce((bestRate, feature) => {
           const matchedCount = normalizedSamples.filter((sample) =>
-            this.matchProtectionFeatureValue(sample, feature.matcher, feature.expression),
+            this.matchProtectionFeatureValue(
+              sample,
+              feature.matcher,
+              feature.expression,
+            ),
           ).length;
           const currentRate = (matchedCount / normalizedSamples.length) * 100;
 
@@ -609,32 +590,35 @@ export class DataOverviewService {
   }
 
   private async getOverviewContext() {
-    const [assets, templates, scanResults, protectionFeatures] = await Promise.all([
-      this.prisma.dataAsset.findMany({
-        include: { assetGroup: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.classificationTemplate.findMany({
-        include: {
-          dataTypes: {
-            include: {
-              category: true,
-              levelDefinition: true,
-              rules: true,
+    const [assets, templates, scanResults, protectionFeatures] =
+      await Promise.all([
+        this.prisma.dataAsset.findMany({
+          include: { assetGroup: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.classificationTemplate.findMany({
+          include: {
+            dataTypes: {
+              include: {
+                category: true,
+                levelDefinition: true,
+                rules: true,
+              },
             },
           },
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.autoScanResult.findMany({
-        include: { assetGroup: true, dataAsset: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.getActiveProtectionFeatures(),
-    ]);
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.prisma.autoScanResult.findMany({
+          include: { assetGroup: true, dataAsset: true },
+          orderBy: { createdAt: 'desc' },
+        }),
+        this.getActiveProtectionFeatures(),
+      ]);
 
     const template =
-      templates.find((item) => item.status === TemplateStatus.ACTIVE) ?? templates[0] ?? null;
+      templates.find((item) => item.status === TemplateStatus.ACTIVE) ??
+      templates[0] ??
+      null;
 
     return {
       assets,
@@ -783,11 +767,12 @@ export class DataOverviewService {
   }
 
   async listFullData(_templateId?: string) {
-    const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
-      this.getOverviewReferenceData(),
-      this.getActiveProtectionFeatures(),
-      this.getImportedAssets(),
-    ]);
+    const [referenceData, protectionFeatures, importedAssets] =
+      await Promise.all([
+        this.getOverviewReferenceData(),
+        this.getActiveProtectionFeatures(),
+        this.getImportedAssets(),
+      ]);
     const { maskingFeatures, encryptionFeatures } = protectionFeatures;
     const importedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) => {
@@ -799,7 +784,9 @@ export class DataOverviewService {
         );
 
         return table.columns.map((column) => {
-          const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+          const sampleData = Array.isArray(column.sampleData)
+            ? (column.sampleData as string[])
+            : [];
           const classificationMeta = this.buildClassificationMeta(
             column.classificationDataType?.categoryId ?? null,
             column.classificationDataType?.name ?? null,
@@ -876,16 +863,17 @@ export class DataOverviewService {
         this.getOverviewContext(),
       ]);
     const { maskingFeatures, encryptionFeatures } = protectionFeatures;
-    const classificationCandidates: ClassificationCandidateConfig[] =
-      (overviewContext.template?.dataTypes ?? []).map((dataType) => ({
-        name: dataType.name,
-        rules: dataType.rules.map((rule) => ({
-          target: rule.target,
-          matcher: rule.matcher,
-          value: rule.value,
-          hitRate: Number(rule.hitRate),
-        })),
-      }));
+    const classificationCandidates: ClassificationCandidateConfig[] = (
+      overviewContext.template?.dataTypes ?? []
+    ).map((dataType) => ({
+      name: dataType.name,
+      rules: dataType.rules.map((rule) => ({
+        target: rule.target,
+        matcher: rule.matcher,
+        value: rule.value,
+        hitRate: rule.hitRate === null ? null : Number(rule.hitRate),
+      })),
+    }));
     const importedMissedColumns = importedAssets.flatMap((asset) =>
       asset.tables.flatMap((table) => {
         const databaseName = this.normalizeAssetName(asset.name);
@@ -904,17 +892,21 @@ export class DataOverviewService {
               !column.classificationDataTypeId,
           )
           .map((column) => {
-            const closestCandidate = this.evaluateClosestClassificationCandidate(
-              {
-                fieldName: column.columnName,
-                fieldComment: column.columnComment,
-                fieldType: column.columnType,
-                tableName: table.tableName,
-                tableComment: table.tableComment,
-              },
-              classificationCandidates,
-            );
-            const sampleData = Array.isArray(column.sampleData) ? (column.sampleData as string[]) : [];
+            const sampleData = Array.isArray(column.sampleData)
+              ? (column.sampleData as string[])
+              : [];
+            const closestCandidate =
+              this.evaluateClosestClassificationCandidate(
+                {
+                  fieldName: column.columnName,
+                  fieldComment: column.columnComment,
+                  fieldType: column.columnType,
+                  tableName: table.tableName,
+                  tableComment: table.tableComment,
+                  sampleData,
+                },
+                classificationCandidates,
+              );
             const classificationMeta = this.buildClassificationMeta(
               column.classificationDataType?.categoryId ?? null,
               column.classificationDataType?.name ?? null,
@@ -936,7 +928,8 @@ export class DataOverviewService {
               dataType: column.columnType,
               dataCategory: classificationMeta.dataCategory,
               dataTypeName: classificationMeta.dataTypeName,
-              classificationPathNames: classificationMeta.classificationPathNames,
+              classificationPathNames:
+                classificationMeta.classificationPathNames,
               dataLevel,
               levelCode,
               levelColor: this.resolveLevelColor(
@@ -1000,6 +993,7 @@ export class DataOverviewService {
             fieldType: item.sourceType.toUpperCase(),
             tableName: item.databaseName ?? 'auto_scan',
             tableComment: item.sourceName,
+            sampleData: [item.ipAddress, item.databaseName ?? item.sourceName],
           },
           classificationCandidates,
         );
@@ -1017,7 +1011,11 @@ export class DataOverviewService {
           classificationPathNames: classificationMeta.classificationPathNames,
           dataLevel: 'internal',
           levelCode: 'L2',
-          levelColor: this.resolveLevelColor('L2', null, referenceData.levelColorMap),
+          levelColor: this.resolveLevelColor(
+            'L2',
+            null,
+            referenceData.levelColorMap,
+          ),
           isSensitive: false,
           maskingStatus: 'not_required',
           encryptionStatus: 'not_required',
@@ -1026,8 +1024,7 @@ export class DataOverviewService {
           assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
           key: `${item.ipAddress}:${item.port}`,
           lastCheckTime: this.formatDateTime(item.updatedAt),
-          closestClassificationRule:
-            closestCandidate.closestClassificationRule,
+          closestClassificationRule: closestCandidate.closestClassificationRule,
           hitRate: closestCandidate.hitRate,
           sampleData: [item.ipAddress, item.databaseName ?? item.sourceName],
           updateTime: this.formatDateTime(item.updatedAt),
@@ -1039,13 +1036,16 @@ export class DataOverviewService {
   }
 
   async listTableData(_templateId?: string) {
-    const [referenceData, protectionFeatures, importedAssets] = await Promise.all([
-      this.getOverviewReferenceData(),
-      this.getActiveProtectionFeatures(),
-      this.getImportedAssets(),
-    ]);
+    const [referenceData, protectionFeatures, importedAssets] =
+      await Promise.all([
+        this.getOverviewReferenceData(),
+        this.getActiveProtectionFeatures(),
+        this.getImportedAssets(),
+      ]);
     const { maskingFeatures, encryptionFeatures } = protectionFeatures;
-    const importedDatabases = importedAssets.filter((asset) => asset.tables.length > 0);
+    const importedDatabases = importedAssets.filter(
+      (asset) => asset.tables.length > 0,
+    );
     if (importedDatabases.length > 0) {
       const groupedByInstance = new Map<string, typeof importedDatabases>();
       importedDatabases.forEach((asset) => {
@@ -1055,108 +1055,129 @@ export class DataOverviewService {
         groupedByInstance.set(instanceKey, current);
       });
 
-      return Array.from(groupedByInstance.values()).map((instanceAssets) => ({
-        ip: instanceAssets[0]?.ipAddress ?? '',
-        port: instanceAssets[0]?.port ?? 0,
-            status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
+      return Array.from(groupedByInstance.values()).map(
+        (instanceAssets) =>
+          ({
+            ip: instanceAssets[0]?.ipAddress ?? '',
+            port: instanceAssets[0]?.port ?? 0,
+            status: instanceAssets.some(
+              (asset) => asset.status === CommonStatus.ACTIVE,
+            )
+              ? 'online'
+              : 'offline',
             databases: instanceAssets.flatMap((asset) => {
-          const assetGroupMeta = this.buildAssetGroupMeta(
-            asset.assetGroupId,
-            asset.assetGroup?.name,
-            referenceData.assetGroupMap,
-          );
+              const assetGroupMeta = this.buildAssetGroupMeta(
+                asset.assetGroupId,
+                asset.assetGroup?.name,
+                referenceData.assetGroupMap,
+              );
 
-          // Group tables by their actual databaseName
-          const tablesByDbName = new Map<string, typeof asset.tables>();
-          asset.tables.forEach((table) => {
-            const dbName = table.databaseName || this.normalizeAssetName(asset.name);
-            const current = tablesByDbName.get(dbName) ?? [];
-            current.push(table);
-            tablesByDbName.set(dbName, current);
-          });
+              // Group tables by their actual databaseName
+              const tablesByDbName = new Map<string, typeof asset.tables>();
+              asset.tables.forEach((table) => {
+                const dbName =
+                  table.databaseName || this.normalizeAssetName(asset.name);
+                const current = tablesByDbName.get(dbName) ?? [];
+                current.push(table);
+                tablesByDbName.set(dbName, current);
+              });
 
-          return Array.from(tablesByDbName.entries()).map(([dbName, dbTables]) => ({
-            id: `${asset.id}::${dbName}`,
-            assetId: asset.id,
-            assetName: asset.name,
-            name: dbName,
-            port: asset.port,
-            type: asset.sourceType,
-            status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
-            isDeleted: asset.isDeleted,
-            tables: dbTables.map((table) => ({
-              id: table.id,
-              name: table.tableName,
-              databaseId: `${asset.id}::${dbName}`,
-              rowCount: table.rowCount,
-              size: table.sizeBytes,
-              status:
-                asset.status === CommonStatus.ARCHIVED
-                  ? 'maintenance'
-                  : asset.status === CommonStatus.ACTIVE
-                ? 'online'
-                : 'offline',
-              lastSyncTime: this.formatDateTime(table.updatedAt),
-              syncStatus: 'success',
-              isDeleted: table.isDeleted || asset.isDeleted,
-              fields: table.columns.map((column) => {
-                const sampleData = Array.isArray(column.sampleData)
-                  ? (column.sampleData as string[])
-                  : [];
-                const classificationMeta = this.buildClassificationMeta(
-                  column.classificationDataType?.categoryId ?? null,
-                  column.classificationDataType?.name ?? null,
-                  column.dataCategory ?? '未分类',
-                  referenceData.classificationCategoryMap,
-                );
-                const dataLevel = this.mapPersistedLevel(column.dataLevel);
-                const levelCode = this.mapPersistedLevelCode(
-                  column.dataLevel,
-                  column.classificationDataType?.levelDefinition?.code,
-                );
+              return Array.from(tablesByDbName.entries()).map(
+                ([dbName, dbTables]) =>
+                  ({
+                    id: `${asset.id}::${dbName}`,
+                    assetId: asset.id,
+                    assetName: asset.name,
+                    name: dbName,
+                    port: asset.port,
+                    type: asset.sourceType,
+                    status:
+                      asset.status === CommonStatus.ACTIVE
+                        ? 'online'
+                        : 'offline',
+                    isDeleted: asset.isDeleted,
+                    tables: dbTables.map((table) => ({
+                      id: table.id,
+                      name: table.tableName,
+                      databaseId: `${asset.id}::${dbName}`,
+                      rowCount: table.rowCount,
+                      size: table.sizeBytes,
+                      status:
+                        asset.status === CommonStatus.ARCHIVED
+                          ? 'maintenance'
+                          : asset.status === CommonStatus.ACTIVE
+                            ? 'online'
+                            : 'offline',
+                      lastSyncTime: this.formatDateTime(table.updatedAt),
+                      syncStatus: 'success',
+                      isDeleted: table.isDeleted || asset.isDeleted,
+                      fields: table.columns.map((column) => {
+                        const sampleData = Array.isArray(column.sampleData)
+                          ? (column.sampleData as string[])
+                          : [];
+                        const classificationMeta = this.buildClassificationMeta(
+                          column.classificationDataType?.categoryId ?? null,
+                          column.classificationDataType?.name ?? null,
+                          column.dataCategory ?? '未分类',
+                          referenceData.classificationCategoryMap,
+                        );
+                        const dataLevel = this.mapPersistedLevel(
+                          column.dataLevel,
+                        );
+                        const levelCode = this.mapPersistedLevelCode(
+                          column.dataLevel,
+                          column.classificationDataType?.levelDefinition?.code,
+                        );
 
-                return {
-                  id: column.id,
-                  fieldName: column.columnName,
-                  fieldComment: column.columnComment ?? '',
-                  fieldTable: table.tableName,
-                  dataType: column.columnType,
-                  dataCategory: classificationMeta.dataCategory,
-                  dataTypeName: classificationMeta.dataTypeName,
-                  classificationPathNames:
-                    classificationMeta.classificationPathNames,
-                  dataLevel,
-                  levelCode,
-                  levelColor: this.resolveLevelColor(
-                    levelCode,
-                    column.classificationDataType?.levelDefinition?.color,
-                    referenceData.levelColorMap,
-                  ),
-                  isSensitive: column.isSensitive,
-                  maskingStatus: this.resolveProtectionStatus(
-                    column.needMask,
-                    sampleData,
-                    maskingFeatures,
-                  ),
-                  encryptionStatus: this.resolveProtectionStatus(
-                    column.needEncrypt,
-                    sampleData,
-                    encryptionFeatures,
-                  ),
-                  groupName: assetGroupMeta.groupName,
-                  rootGroupName: assetGroupMeta.rootGroupName,
-                  assetGroupPathNames: assetGroupMeta.assetGroupPathNames,
-                  sampleData,
-                  updateTime: this.formatDateTime(column.updatedAt),
-                  isDeleted: column.isDeleted || table.isDeleted || asset.isDeleted,
-                  tableIsDeleted: table.isDeleted || asset.isDeleted,
-                  databaseIsDeleted: asset.isDeleted,
-                };
-              }),
-            })),
-          } satisfies DatabaseRecord));
-        }),
-      } satisfies DatabaseInstanceRecord));
+                        return {
+                          id: column.id,
+                          fieldName: column.columnName,
+                          fieldComment: column.columnComment ?? '',
+                          fieldTable: table.tableName,
+                          dataType: column.columnType,
+                          dataCategory: classificationMeta.dataCategory,
+                          dataTypeName: classificationMeta.dataTypeName,
+                          classificationPathNames:
+                            classificationMeta.classificationPathNames,
+                          dataLevel,
+                          levelCode,
+                          levelColor: this.resolveLevelColor(
+                            levelCode,
+                            column.classificationDataType?.levelDefinition
+                              ?.color,
+                            referenceData.levelColorMap,
+                          ),
+                          isSensitive: column.isSensitive,
+                          maskingStatus: this.resolveProtectionStatus(
+                            column.needMask,
+                            sampleData,
+                            maskingFeatures,
+                          ),
+                          encryptionStatus: this.resolveProtectionStatus(
+                            column.needEncrypt,
+                            sampleData,
+                            encryptionFeatures,
+                          ),
+                          groupName: assetGroupMeta.groupName,
+                          rootGroupName: assetGroupMeta.rootGroupName,
+                          assetGroupPathNames:
+                            assetGroupMeta.assetGroupPathNames,
+                          sampleData,
+                          updateTime: this.formatDateTime(column.updatedAt),
+                          isDeleted:
+                            column.isDeleted ||
+                            table.isDeleted ||
+                            asset.isDeleted,
+                          tableIsDeleted: table.isDeleted || asset.isDeleted,
+                          databaseIsDeleted: asset.isDeleted,
+                        };
+                      }),
+                    })),
+                  }) satisfies DatabaseRecord,
+              );
+            }),
+          }) satisfies DatabaseInstanceRecord,
+      );
     }
 
     const fields = await this.buildFullDataRecords(referenceData);
@@ -1201,39 +1222,52 @@ export class DataOverviewService {
       groupedByInstance.set(instanceKey, current);
     });
 
-    return Array.from(groupedByInstance.values()).map((instanceAssets) => ({
-      ip: instanceAssets[0]?.ipAddress ?? '',
-      port: instanceAssets[0]?.port ?? 0,
-      status: instanceAssets.some((asset) => asset.status === CommonStatus.ACTIVE) ? 'online' : 'offline',
-      databases: instanceAssets.map((asset) => {
-        const tableName = `${this.normalizeAssetName(asset.name)}_main`;
-        const fields = fieldsByAssetId.get(asset.id) ?? [];
+    return Array.from(groupedByInstance.values()).map(
+      (instanceAssets) =>
+        ({
+          ip: instanceAssets[0]?.ipAddress ?? '',
+          port: instanceAssets[0]?.port ?? 0,
+          status: instanceAssets.some(
+            (asset) => asset.status === CommonStatus.ACTIVE,
+          )
+            ? 'online'
+            : 'offline',
+          databases: instanceAssets.map((asset) => {
+            const tableName = `${this.normalizeAssetName(asset.name)}_main`;
+            const fields = fieldsByAssetId.get(asset.id) ?? [];
 
-        return {
-          id: asset.id,
-          assetId: asset.id,
-          assetName: asset.name,
-          name: this.normalizeAssetName(asset.name),
-          port: asset.port,
-          type: asset.sourceType,
-          status: asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
-          isDeleted: false,
-          tables: [
-            {
-              id: `${asset.id}-table-main`,
-              name: tableName,
-              databaseId: asset.id,
-              rowCount: Math.max(1, fields.length * 100),
-              size: Math.max(1024 * 1024, fields.length * 512000),
-              status: asset.status === CommonStatus.ARCHIVED ? 'maintenance' : asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
-              lastSyncTime: this.formatDateTime(asset.updatedAt),
-              syncStatus: 'success',
+            return {
+              id: asset.id,
+              assetId: asset.id,
+              assetName: asset.name,
+              name: this.normalizeAssetName(asset.name),
+              port: asset.port,
+              type: asset.sourceType,
+              status:
+                asset.status === CommonStatus.ACTIVE ? 'online' : 'offline',
               isDeleted: false,
-              fields,
-            },
-          ],
-        } satisfies DatabaseRecord;
-      }),
-    } satisfies DatabaseInstanceRecord));
+              tables: [
+                {
+                  id: `${asset.id}-table-main`,
+                  name: tableName,
+                  databaseId: asset.id,
+                  rowCount: Math.max(1, fields.length * 100),
+                  size: Math.max(1024 * 1024, fields.length * 512000),
+                  status:
+                    asset.status === CommonStatus.ARCHIVED
+                      ? 'maintenance'
+                      : asset.status === CommonStatus.ACTIVE
+                        ? 'online'
+                        : 'offline',
+                  lastSyncTime: this.formatDateTime(asset.updatedAt),
+                  syncStatus: 'success',
+                  isDeleted: false,
+                  fields,
+                },
+              ],
+            } satisfies DatabaseRecord;
+          }),
+        }) satisfies DatabaseInstanceRecord,
+    );
   }
 }

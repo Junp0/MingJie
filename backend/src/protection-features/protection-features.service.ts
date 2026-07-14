@@ -9,6 +9,10 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProtectionFeatureDto } from './dto/create-protection-feature.dto';
 import { UpdateProtectionFeatureDto } from './dto/update-protection-feature.dto';
+import {
+  BUILT_IN_PROTECTION_FEATURES,
+  RETIRED_BUILT_IN_MASKING_FEATURE_CODES,
+} from './protection-feature-catalog';
 
 @Injectable()
 export class ProtectionFeaturesService {
@@ -34,45 +38,44 @@ export class ProtectionFeaturesService {
   }
 
   async seed() {
-    const count = await this.prisma.protectionFeature.count();
-    if (count > 0) return;
+    return this.installBuiltInCatalog();
+  }
+
+  async installBuiltInCatalog() {
+    await this.prisma.protectionFeature.deleteMany({
+      where: {
+        featureType: ProtectionFeatureType.MASKING,
+        featureCode: { in: [...RETIRED_BUILT_IN_MASKING_FEATURE_CODES] },
+      },
+    });
+
+    const featureCodes = BUILT_IN_PROTECTION_FEATURES.map(
+      (feature) => feature.featureCode,
+    );
+    const existingFeatures = await this.prisma.protectionFeature.findMany({
+      where: { featureCode: { in: featureCodes } },
+      select: { featureCode: true },
+    });
+    const existingCodes = new Set(
+      existingFeatures
+        .map((feature) => feature.featureCode)
+        .filter((code): code is string => Boolean(code)),
+    );
+    const missingFeatures = BUILT_IN_PROTECTION_FEATURES.filter(
+      (feature) => !existingCodes.has(feature.featureCode),
+    );
+
+    if (missingFeatures.length === 0) return 0;
 
     const creator = await this.prisma.user.findFirst({ orderBy: { createdAt: 'asc' } });
-
-    await this.prisma.protectionFeature.createMany({
-      data: [
-        {
-          featureType: ProtectionFeatureType.MASKING,
-          featureName: '手机号脱敏识别',
-          featureCode: 'MASK_PHONE',
-          scene: '通用脱敏形态',
-          featurePoint: '中间4位替换为*',
-          matcher: 'regex',
-          hitRate: 95,
-          priority: 10,
-          expression: '^1\\d{2}\\*{4}\\d{4}$',
-          sampleValue: '138****1234',
-          status: ProtectionFeatureStatus.ACTIVE,
-          description: '识别手机号脱敏结果',
-          creatorId: creator?.id,
-        },
-        {
-          featureType: ProtectionFeatureType.ENCRYPTION,
-          featureName: 'SHA256摘要识别',
-          featureCode: 'ENC_SHA256',
-          scene: '摘要哈希',
-          featurePoint: '64位十六进制摘要串',
-          matcher: 'regex',
-          hitRate: 88,
-          priority: 20,
-          expression: '^[A-Fa-f0-9]{64}$',
-          sampleValue: '9f86d081884c7d659a2feaa0c55ad015...',
-          status: ProtectionFeatureStatus.ACTIVE,
-          description: '识别常见 SHA256 摘要字段',
-          creatorId: creator?.id,
-        },
-      ],
+    const result = await this.prisma.protectionFeature.createMany({
+      data: missingFeatures.map((feature) => ({
+        ...feature,
+        creatorId: creator?.id,
+      })),
     });
+
+    return result.count;
   }
 
   async findAll(type?: string) {

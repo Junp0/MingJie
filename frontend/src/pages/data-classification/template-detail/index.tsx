@@ -62,6 +62,7 @@ import {
   type LevelDefinitionFormValues,
   type RuleConfig,
   type RuleCondition,
+  type RuleMatchTarget,
   updateClassificationCategory,
   updateClassificationDataType,
   updateClassificationLevelDefinition,
@@ -259,6 +260,7 @@ const TemplateDetail: React.FC = () => {
 
   const [dataTypeForm] = Form.useForm<DataTypeFormValues>();
   const [levelForm] = Form.useForm<LevelDefinitionFormValues>();
+  const watchedRuleConfig = Form.useWatch('ruleConfig', dataTypeForm);
 
   const syncTemplateState = (
     nextTemplate: ClassificationTemplateRecord | null,
@@ -869,14 +871,17 @@ const TemplateDetail: React.FC = () => {
       render: (value: boolean) => renderBooleanTag(value),
     },
     {
-      title: '命中率',
+      title: '数据命中率',
       dataIndex: 'ruleConfig',
       key: 'hitRate',
       width: 220,
       render: (ruleConfig: RuleConfig) => {
-        const conditions = ruleConfig.conditions.filter((condition) => condition.value.trim());
+        const conditions = ruleConfig.conditions.filter(
+          (condition) =>
+            condition.target === 'sampleData' && condition.value.trim(),
+        );
         if (!conditions.length) {
-          return <Text type="secondary">未配置</Text>;
+          return <Text type="secondary">不适用</Text>;
         }
 
         return (
@@ -884,9 +889,12 @@ const TemplateDetail: React.FC = () => {
             {conditions.map((condition, index) => (
               <Tooltip
                 key={condition.id ?? `${index}`}
-                title={`规则${index + 1}：${condition.hitRate}%`}
+                title={`内容规则${index + 1}：${condition.hitRate ?? 100}%`}
               >
-                {renderHitRateTag(condition.hitRate, `规则${index + 1}`)}
+                {renderHitRateTag(
+                  condition.hitRate ?? 100,
+                  `规则${index + 1}`,
+                )}
               </Tooltip>
             ))}
           </Space>
@@ -1343,62 +1351,103 @@ const TemplateDetail: React.FC = () => {
               {(fields, { add, remove }) => (
                 <>
                   {fields.length ? (
-                    fields.map((field, index) => (
-                      <Row key={field.key} gutter={12} align="middle" style={{ marginBottom: 12 }}>
-                        <Col span={5}>
-                          <Form.Item
-                            label={index === 0 ? '匹配位置' : ' '}
-                            name={[field.name, 'target']}
-                            rules={[{ required: true, message: '请选择匹配位置' }]}
-                          >
-                            <Select placeholder="请选择匹配位置" options={RULE_MATCH_TARGET_OPTIONS} />
-                          </Form.Item>
-                        </Col>
-                        <Col span={5}>
-                          <Form.Item
-                            label={index === 0 ? '匹配方式' : ' '}
-                            name={[field.name, 'matcher']}
-                            rules={[{ required: true, message: '请选择匹配方式' }]}
-                          >
-                            <Select placeholder="请选择匹配方式" options={RULE_MATCHER_OPTIONS} />
-                          </Form.Item>
-                        </Col>
-                        <Col span={8}>
-                          <Form.Item
-                            label={index === 0 ? '匹配值' : ' '}
-                            name={[field.name, 'value']}
-                            rules={[{ required: true, message: '请输入匹配值' }]}
-                          >
-                            <Input placeholder="请输入匹配值，枚举包含可使用逗号分隔多个值" />
-                          </Form.Item>
-                        </Col>
-                        <Col span={4}>
-                          <Form.Item
-                            label={index === 0 ? '命中率(%)' : ' '}
-                            name={[field.name, 'hitRate']}
-                            rules={[{ required: true, message: '请输入命中率' }]}
-                          >
-                            <InputNumber
-                              min={0}
-                              max={100}
-                              precision={2}
-                              style={{ width: '100%' }}
-                              placeholder="0-100"
-                            />
-                          </Form.Item>
-                        </Col>
-                        <Col span={2}>
-                          <Button
-                            danger
-                            type="link"
-                            style={{ paddingInline: 0 }}
-                            onClick={() => remove(field.name)}
-                          >
-                            删除
-                          </Button>
-                        </Col>
-                      </Row>
-                    ))
+                    fields.map((field, index) => {
+                      const isContentRule =
+                        watchedRuleConfig?.conditions?.[field.name]?.target ===
+                        'sampleData';
+                      return (
+                        <Row
+                          key={field.key}
+                          gutter={12}
+                          align="middle"
+                          style={{ marginBottom: 12 }}
+                        >
+                          <Col span={5}>
+                            <Form.Item
+                              label={index === 0 ? '匹配位置' : ' '}
+                              name={[field.name, 'target']}
+                              rules={[{ required: true, message: '请选择匹配位置' }]}
+                            >
+                              <Select
+                                placeholder="请选择匹配位置"
+                                options={RULE_MATCH_TARGET_OPTIONS}
+                                onChange={(target: RuleMatchTarget) => {
+                                  if (target === 'sampleData') {
+                                    dataTypeForm.setFieldValue(
+                                      ['ruleConfig', 'conditions', field.name, 'matcher'],
+                                      'regex',
+                                    );
+                                    dataTypeForm.setFieldValue(
+                                      ['ruleConfig', 'conditions', field.name, 'hitRate'],
+                                      100,
+                                    );
+                                  } else {
+                                    dataTypeForm.setFieldValue(
+                                      ['ruleConfig', 'conditions', field.name, 'hitRate'],
+                                      undefined,
+                                    );
+                                  }
+                                }}
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={5}>
+                            <Form.Item
+                              label={index === 0 ? '匹配方式' : ' '}
+                              name={[field.name, 'matcher']}
+                              rules={[{ required: true, message: '请选择匹配方式' }]}
+                            >
+                              <Select
+                                placeholder="请选择匹配方式"
+                                options={
+                                  isContentRule
+                                    ? RULE_MATCHER_OPTIONS.filter(
+                                        (option) => option.value === 'regex',
+                                      )
+                                    : RULE_MATCHER_OPTIONS
+                                }
+                              />
+                            </Form.Item>
+                          </Col>
+                          <Col span={isContentRule ? 8 : 12}>
+                            <Form.Item
+                              label={index === 0 ? '匹配值' : ' '}
+                              name={[field.name, 'value']}
+                              rules={[{ required: true, message: '请输入匹配值' }]}
+                            >
+                              <Input placeholder="请输入匹配值，枚举包含可使用逗号分隔多个值" />
+                            </Form.Item>
+                          </Col>
+                          {isContentRule ? (
+                            <Col span={4}>
+                              <Form.Item
+                                label={index === 0 ? '命中率(%)' : ' '}
+                                name={[field.name, 'hitRate']}
+                                rules={[{ required: true, message: '请输入命中率' }]}
+                              >
+                                <InputNumber
+                                  min={0}
+                                  max={100}
+                                  precision={2}
+                                  style={{ width: '100%' }}
+                                  placeholder="0-100"
+                                />
+                              </Form.Item>
+                            </Col>
+                          ) : null}
+                          <Col span={2}>
+                            <Button
+                              danger
+                              type="link"
+                              style={{ paddingInline: 0 }}
+                              onClick={() => remove(field.name)}
+                            >
+                              删除
+                            </Button>
+                          </Col>
+                        </Row>
+                      );
+                    })
                   ) : (
                     <Empty
                       description="暂无识别规则"

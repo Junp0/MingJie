@@ -8,6 +8,9 @@ import { RolesService } from './roles/roles.service';
 
 const DEFAULT_BOOTSTRAP_KEY = 'default-demo-v1';
 const ROLES_BOOTSTRAP_KEY = 'roles-v1';
+const CLASSIFICATION_BASELINE_BOOTSTRAP_KEY = 'classification-baseline-v10';
+const PROTECTION_FEATURE_CATALOG_BOOTSTRAP_KEY =
+  'protection-feature-catalog-v4';
 
 @Injectable()
 export class AppInitializationService implements OnApplicationBootstrap {
@@ -52,6 +55,10 @@ export class AppInitializationService implements OnApplicationBootstrap {
     });
 
     if (bootstrapState) {
+      await Promise.all([
+        this.upgradeClassificationBaseline(),
+        this.upgradeProtectionFeatureCatalog(),
+      ]);
       return;
     }
 
@@ -74,11 +81,56 @@ export class AppInitializationService implements OnApplicationBootstrap {
     await this.prisma.appBootstrapState.upsert({
       where: { key: DEFAULT_BOOTSTRAP_KEY },
       update: {
-        value: hasExistingData ? 'adopted-existing-data' : 'initialized-default-demo-data',
+        value: hasExistingData
+          ? 'adopted-existing-data'
+          : 'initialized-default-demo-data',
       },
       create: {
         key: DEFAULT_BOOTSTRAP_KEY,
-        value: hasExistingData ? 'adopted-existing-data' : 'initialized-default-demo-data',
+        value: hasExistingData
+          ? 'adopted-existing-data'
+          : 'initialized-default-demo-data',
+      },
+    });
+
+    await Promise.all([
+      this.upgradeClassificationBaseline(),
+      this.upgradeProtectionFeatureCatalog(),
+    ]);
+  }
+
+  private async upgradeClassificationBaseline() {
+    const state = await this.prisma.appBootstrapState.findUnique({
+      where: { key: CLASSIFICATION_BASELINE_BOOTSTRAP_KEY },
+    });
+    if (state) return;
+
+    const upgradedTemplateCount =
+      await this.classificationTemplatesService.upgradeBuiltInTemplates();
+    await this.prisma.appBootstrapState.upsert({
+      where: { key: CLASSIFICATION_BASELINE_BOOTSTRAP_KEY },
+      update: { value: `upgraded-${upgradedTemplateCount}-templates` },
+      create: {
+        key: CLASSIFICATION_BASELINE_BOOTSTRAP_KEY,
+        value: `upgraded-${upgradedTemplateCount}-templates`,
+      },
+    });
+  }
+
+  private async upgradeProtectionFeatureCatalog() {
+    const state = await this.prisma.appBootstrapState.findUnique({
+      where: { key: PROTECTION_FEATURE_CATALOG_BOOTSTRAP_KEY },
+    });
+    if (state) return;
+
+    const installedFeatureCount =
+      await this.protectionFeaturesService.installBuiltInCatalog();
+    await this.prisma.appBootstrapState.upsert({
+      where: { key: PROTECTION_FEATURE_CATALOG_BOOTSTRAP_KEY },
+      update: { value: `installed-${installedFeatureCount}-features` },
+      create: {
+        key: PROTECTION_FEATURE_CATALOG_BOOTSTRAP_KEY,
+        value: `installed-${installedFeatureCount}-features`,
       },
     });
   }

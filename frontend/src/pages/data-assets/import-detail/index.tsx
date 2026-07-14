@@ -10,6 +10,7 @@ import {
   getClassificationTaskById,
   type ClassificationTaskRecord,
 } from "@/services/data-classification/classificationTaskStore";
+import { sortDeletedLast } from "@/utils/collection";
 import { ArrowLeftOutlined, DatabaseOutlined, EditOutlined, LinkOutlined } from "@ant-design/icons";
 import { PageContainer } from "@ant-design/pro-components";
 import { useNavigate, useParams } from "@umijs/max";
@@ -22,7 +23,6 @@ import {
   Modal,
   Progress,
   Space,
-  Switch,
   Table,
   Tag,
   Typography,
@@ -39,7 +39,10 @@ const renderDeletedLabel = (
   deletedAt?: string
 ) => (
   <Space size={8} wrap>
-    <Text delete={deleted} type={deleted ? "secondary" : undefined}>
+    <Text
+      delete={deleted}
+      style={deleted ? { color: "#bfbfbf" } : undefined}
+    >
       {value}
     </Text>
     {deleted ? (
@@ -73,7 +76,6 @@ const ImportDetail: React.FC = () => {
   );
   const [linkedClassificationTask, setLinkedClassificationTask] =
     useState<ClassificationTaskRecord | null>(null);
-  const [hideDeletedObjects, setHideDeletedObjects] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,25 +229,15 @@ const ImportDetail: React.FC = () => {
 
   const allSchemaTables = useMemo(() => {
     if (!importTask) return [];
-    return importTask.schemaTables;
+    return sortDeletedLast(importTask.schemaTables).map((table) => ({
+      ...table,
+      columns: sortDeletedLast(table.columns),
+    }));
   }, [importTask]);
 
-  const visibleSchemaTables = useMemo(
-    () =>
-      hideDeletedObjects
-        ? allSchemaTables
-            .filter((table) => !table.isDeleted)
-            .map((table) => ({
-              ...table,
-              columns: table.columns.filter((column) => !column.isDeleted),
-            }))
-        : allSchemaTables,
-    [hideDeletedObjects, allSchemaTables]
-  );
-
   const groupedByDatabase = useMemo(() => {
-    const map = new Map<string, typeof visibleSchemaTables>();
-    for (const table of visibleSchemaTables) {
+    const map = new Map<string, typeof allSchemaTables>();
+    for (const table of allSchemaTables) {
       const key = table.databaseName || "未知库";
       const group = map.get(key) ?? [];
       group.push(table);
@@ -255,7 +247,7 @@ const ImportDetail: React.FC = () => {
       databaseName,
       tables,
     }));
-  }, [visibleSchemaTables]);
+  }, [allSchemaTables]);
 
   const statusMeta = importTask ? getImportStatusMeta(importTask.status) : null;
 
@@ -524,18 +516,9 @@ const ImportDetail: React.FC = () => {
           size="small"
           className="detailSectionCard"
           extra={
-            <Space wrap>
-              <Space size={8}>
-                <Text type="secondary">隐藏已删除</Text>
-                <Switch
-                  checked={hideDeletedObjects}
-                  onChange={setHideDeletedObjects}
-                />
-              </Space>
-              {importTask.assetDeleted ? (
-                <Tag color="red">该数据库在最近一次导入中已标记删除</Tag>
-              ) : null}
-            </Space>
+            importTask.assetDeleted ? (
+              <Tag color="red">该数据库在最近一次导入中已标记删除</Tag>
+            ) : null
           }
         >
           {groupedByDatabase.length ? (

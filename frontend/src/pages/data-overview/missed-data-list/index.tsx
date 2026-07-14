@@ -51,11 +51,12 @@ const MissedDataList: React.FC = () => {
       align: 'center',
     },
     {
-      title: '命中率',
+      title: '数据命中率',
       dataIndex: 'hitRate',
       valueType: 'digit',
       align: 'center',
-      render: (_, record) => `${record.hitRate}%`,
+      render: (_, record) =>
+        record.hitRate == null ? '-' : `${Number(record.hitRate.toFixed(2))}%`,
     },
     {
       title: '样本',

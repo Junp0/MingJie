@@ -105,16 +105,21 @@ export class ClassificationTemplateDetailsService {
         target: dto.target,
         matcher: dto.matcher,
         value: dto.value,
-        hitRate: dto.hitRate,
+        hitRate: dto.target === 'sampleData' ? dto.hitRate : null,
         sortOrder: dto.sortOrder ?? 0,
       },
     });
   }
 
-  updateRule(id: string, dto: UpdateRuleDto) {
+  async updateRule(id: string, dto: UpdateRuleDto) {
+    const current = await this.prisma.classificationRule.findUnique({ where: { id } });
+    const target = dto.target ?? current?.target;
     return this.prisma.classificationRule.update({
       where: { id },
-      data: dto,
+      data: {
+        ...dto,
+        hitRate: target === 'sampleData' ? dto.hitRate ?? current?.hitRate : null,
+      },
     });
   }
 
