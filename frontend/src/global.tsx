@@ -4,6 +4,58 @@ import defaultSettings from '../config/defaultSettings';
 
 const { pwa } = defaultSettings;
 const isHttps = document.location.protocol === 'https:';
+const chunkReloadKey = 'mingjie:chunk-reload-at';
+const chunkLoadErrorPattern =
+  /ChunkLoadError|Loading (?:CSS )?chunk \d+ failed|Failed to fetch dynamically imported module|Importing a module script failed/i;
+
+const getErrorText = (reason: unknown) => {
+  if (reason instanceof Error) {
+    return `${reason.name}: ${reason.message}`;
+  }
+  if (typeof reason === 'string') {
+    return reason;
+  }
+  if (reason && typeof reason === 'object' && 'message' in reason) {
+    return String(reason.message);
+  }
+  return '';
+};
+
+const reloadForStaleChunk = () => {
+  const now = Date.now();
+  const lastReloadAt = Number(window.sessionStorage.getItem(chunkReloadKey) ?? 0);
+  if (now - lastReloadAt < 60_000) {
+    return;
+  }
+
+  window.sessionStorage.setItem(chunkReloadKey, String(now));
+  window.location.reload();
+};
+
+window.addEventListener('error', (event) => {
+  const target = event.target;
+  const isLocalScriptFailure =
+    target instanceof HTMLScriptElement &&
+    new URL(target.src, window.location.href).origin === window.location.origin;
+  const isLocalStyleFailure =
+    target instanceof HTMLLinkElement &&
+    target.rel === 'stylesheet' &&
+    new URL(target.href, window.location.href).origin === window.location.origin;
+
+  if (
+    isLocalScriptFailure ||
+    isLocalStyleFailure ||
+    chunkLoadErrorPattern.test(event.message)
+  ) {
+    reloadForStaleChunk();
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  if (chunkLoadErrorPattern.test(getErrorText(event.reason))) {
+    reloadForStaleChunk();
+  }
+});
 
 const clearCache = () => {
   // remove all caches

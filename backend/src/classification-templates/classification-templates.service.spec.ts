@@ -402,6 +402,73 @@ describe('ClassificationTemplatesService default baseline', () => {
     });
   });
 
+  it('installs the built-in template when only custom templates exist', async () => {
+    const prisma = {
+      classificationTemplate: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const seedService = new ClassificationTemplatesService(
+      prisma as never,
+      null as never,
+      null as never,
+    );
+    const builtInTemplate = {
+      id: 'built-in-template',
+      templateName: '通用数据分类分级基线模板',
+    };
+    const createDefaultTemplate = jest
+      .spyOn(seedService as never, 'createDefaultTemplate')
+      .mockResolvedValue(builtInTemplate as never);
+    const createLinkedTask = jest
+      .spyOn(seedService as never, 'createLinkedTask')
+      .mockResolvedValue({} as never);
+
+    await seedService.seed();
+
+    expect(prisma.classificationTemplate.findFirst).toHaveBeenCalledWith({
+      where: { templateType: 'built-in' },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(createDefaultTemplate).toHaveBeenCalledTimes(1);
+    expect(createLinkedTask).toHaveBeenCalledWith(
+      builtInTemplate.id,
+      builtInTemplate.templateName,
+    );
+  });
+
+  it('reuses an existing built-in template and restores its linked task', async () => {
+    const builtInTemplate = {
+      id: 'existing-built-in-template',
+      templateName: '通用数据分类分级基线模板',
+    };
+    const prisma = {
+      classificationTemplate: {
+        findFirst: jest.fn().mockResolvedValue(builtInTemplate),
+      },
+    };
+    const seedService = new ClassificationTemplatesService(
+      prisma as never,
+      null as never,
+      null as never,
+    );
+    const createDefaultTemplate = jest.spyOn(
+      seedService as never,
+      'createDefaultTemplate',
+    );
+    const createLinkedTask = jest
+      .spyOn(seedService as never, 'createLinkedTask')
+      .mockResolvedValue({} as never);
+
+    await seedService.seed();
+
+    expect(createDefaultTemplate).not.toHaveBeenCalled();
+    expect(createLinkedTask).toHaveBeenCalledWith(
+      builtInTemplate.id,
+      builtInTemplate.templateName,
+    );
+  });
+
   it('keeps gender separate while routing birth dates to time information', () => {
     const { dataTypes } = getDefinitions();
     const byName = new Map(

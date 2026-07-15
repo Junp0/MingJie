@@ -1,6 +1,8 @@
 import { request } from '@/services/request';
 import { formatBeijingDateTime } from '@/utils/datetime';
 
+export const ALL_ASSET_GROUP_ID = '__all_asset_groups__';
+
 export interface AssetGroup {
   id: string;
   name: string;
@@ -78,10 +80,13 @@ const toUpdatePayload = (group: AssetGroup) => ({
   level: group.level,
 });
 
-export const listAssetGroups = async (): Promise<AssetGroup[]> => {
+const listAllAssetGroups = async (): Promise<AssetGroup[]> => {
   const data = await request<BackendAssetGroup[]>('/api/asset-groups');
   return data.map(mapAssetGroup).sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
 };
+
+export const listAssetGroups = async (): Promise<AssetGroup[]> =>
+  (await listAllAssetGroups()).filter((group) => group.id !== ALL_ASSET_GROUP_ID);
 
 export const updateAssetGroup = async (group: AssetGroup): Promise<AssetGroup> => {
   const data = await request<BackendAssetGroup>(`/api/asset-groups/${group.id}`, {
@@ -189,10 +194,12 @@ interface TreeSelectNode {
 }
 
 export const listAssetGroupTreeSelectOptions = async (): Promise<TreeSelectNode[]> => {
-  const groups = await listAssetGroups();
+  const groups = await listAllAssetGroups();
+  const allGroup = groups.find((group) => group.id === ALL_ASSET_GROUP_ID);
+  const regularGroups = groups.filter((group) => group.id !== ALL_ASSET_GROUP_ID);
 
   const buildTree = (parentId: string | null): TreeSelectNode[] =>
-    groups
+    regularGroups
       .filter((group) => group.parentId === parentId)
       .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
       .map((group) => ({
@@ -201,7 +208,10 @@ export const listAssetGroupTreeSelectOptions = async (): Promise<TreeSelectNode[
         children: buildTree(group.id),
       }));
 
-  return buildTree(null);
+  const regularTree = buildTree(null);
+  return allGroup
+    ? [{ value: allGroup.id, title: allGroup.name, children: regularTree }]
+    : regularTree;
 };
 
 export const listAssetGroupDepartments = async (): Promise<AssetGroupDepartmentOption[]> => {

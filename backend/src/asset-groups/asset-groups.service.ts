@@ -14,6 +14,7 @@ const DEFAULT_DEPARTMENTS = [
   '财务科技部',
   '基础架构部',
 ];
+const ALL_ASSET_GROUP_ID = '__all_asset_groups__';
 
 @Injectable()
 export class AssetGroupsService {
@@ -71,10 +72,32 @@ export class AssetGroupsService {
     await Promise.all(uniqueDepartmentNames.map((name) => this.ensureDepartmentExists(name)));
   }
 
+  private async ensureAllAssetGroup() {
+    await this.prisma.assetGroup.upsert({
+      where: { id: ALL_ASSET_GROUP_ID },
+      update: {
+        name: '全部',
+        parentId: null,
+        level: 0,
+      },
+      create: {
+        id: ALL_ASSET_GROUP_ID,
+        name: '全部',
+        parentId: null,
+        level: 0,
+        description: '系统内置分组，用于接收未指定具体业务域的导入资产。',
+        owner: '系统',
+      },
+    });
+  }
+
   async seed() {
     await this.ensureDefaultDepartments();
+    await this.ensureAllAssetGroup();
 
-    const count = await this.prisma.assetGroup.count();
+    const count = await this.prisma.assetGroup.count({
+      where: { id: { not: ALL_ASSET_GROUP_ID } },
+    });
     if (count > 0) {
       await this.syncDepartmentsFromGroups();
       return;
@@ -232,6 +255,10 @@ export class AssetGroupsService {
   }
 
   async remove(id: string) {
+    if (id === ALL_ASSET_GROUP_ID) {
+      throw new BadRequestException('系统内置“全部”分组不可删除');
+    }
+
     const group = await this.prisma.assetGroup.findUnique({
       where: { id },
       include: {

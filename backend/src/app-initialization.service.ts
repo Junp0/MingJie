@@ -36,6 +36,8 @@ export class AppInitializationService implements OnApplicationBootstrap {
   private async initializeDefaultData() {
     // Always ensure roles exist (idempotent upsert)
     await this.rolesService.seedDefaultRoles();
+    // Asset groups also need to be repaired when an existing bootstrap marker skips demo seeding.
+    await this.assetGroupsService.seed();
 
     const rolesState = await this.prisma.appBootstrapState.findUnique({
       where: { key: ROLES_BOOTSTRAP_KEY },
@@ -55,6 +57,7 @@ export class AppInitializationService implements OnApplicationBootstrap {
     });
 
     if (bootstrapState) {
+      await this.classificationTemplatesService.seed();
       await Promise.all([
         this.upgradeClassificationBaseline(),
         this.upgradeProtectionFeatureCatalog(),
@@ -73,9 +76,10 @@ export class AppInitializationService implements OnApplicationBootstrap {
 
     if (!hasExistingData) {
       await this.authService.seedDefaultUsers();
-      await this.assetGroupsService.seed();
       await this.classificationTemplatesService.seed();
       await this.protectionFeaturesService.seed();
+    } else {
+      await this.classificationTemplatesService.seed();
     }
 
     await this.prisma.appBootstrapState.upsert({

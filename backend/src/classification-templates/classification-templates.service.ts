@@ -2213,9 +2213,13 @@ export class ClassificationTemplatesService {
   }
 
   async seed() {
-    const count = await this.prisma.classificationTemplate.count();
-    if (count > 0) return;
-    const template = await this.createDefaultTemplate();
+    let template = await this.prisma.classificationTemplate.findFirst({
+      where: { templateType: 'built-in' },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!template) {
+      template = await this.createDefaultTemplate();
+    }
     if (template) {
       await this.createLinkedTask(template.id, template.templateName);
     }

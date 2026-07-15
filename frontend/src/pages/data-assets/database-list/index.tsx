@@ -37,6 +37,7 @@ import type { DataNode } from 'antd/es/tree';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './index.less';
 import {
+  ALL_ASSET_GROUP_ID,
   createAssetGroup as createAssetGroupRecord,
   deleteAssetGroupDepartment,
   getAssetGroupPathNames,
@@ -70,7 +71,7 @@ interface DataAssetEditFormValues extends Omit<UpdateDataAssetValues, 'assetGrou
 type GroupModalMode = 'create-child' | 'edit';
 
 const MAX_GROUP_LEVEL = 4;
-const ROOT_GROUP_ID = '__all_asset_groups__';
+const ROOT_GROUP_ID = ALL_ASSET_GROUP_ID;
 
 const SOURCE_TYPE_ENUM: Record<string, { text: string }> = {
   MySQL: { text: 'MySQL' },
@@ -233,7 +234,6 @@ const buildTreeData = (
   nodes: AssetGroupNode[],
   scopedAssetCountByGroupId: Record<string, number>,
   selectedGroupId: string | null,
-  onSelectNode: (groupId: string) => void,
   onCreateChild: (group: AssetGroupNode) => void,
   onEdit: (group: AssetGroupNode) => void,
   onDelete: (group: AssetGroupNode) => void,
@@ -273,15 +273,6 @@ const buildTreeData = (
       title: (
         <div
           className={`assetGroupTreeNode${isSelected ? ' assetGroupTreeNodeSelected' : ''}`}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelectNode(node.id)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              onSelectNode(node.id);
-            }
-          }}
           style={{
             display: 'flex',
             alignItems: 'flex-start',
@@ -360,7 +351,6 @@ const buildTreeData = (
         node.children,
         scopedAssetCountByGroupId,
         selectedGroupId,
-        onSelectNode,
         onCreateChild,
         onEdit,
         onDelete,
@@ -425,7 +415,7 @@ const DataAssetList: React.FC = () => {
       !selectedGroup
         ? []
         : selectedGroup.isVirtualRoot
-          ? groups.map((group) => group.id)
+          ? [ROOT_GROUP_ID, ...groups.map((group) => group.id)]
           : [selectedGroup.id, ...getDescendantIds(groups, selectedGroup.id)],
     [groups, selectedGroup],
   );
@@ -1089,18 +1079,23 @@ const DataAssetList: React.FC = () => {
                 className="assetGroupTree"
                 showLine
                 blockNode
-                selectable={false}
+                selectedKeys={selectedGroupId ? [selectedGroupId] : []}
                 treeData={buildTreeData(
                   filteredTree,
                   scopedAssetCountByGroupId,
                   selectedGroupId,
-                  setSelectedGroupId,
                   openCreateChildModal,
                   openEditModal,
                   handleDeleteGroup,
                 )}
                 expandedKeys={treeKeyword ? allFilteredKeys : expandedKeys}
                 onExpand={(keys) => setExpandedKeys(keys as string[])}
+                onSelect={(keys) => {
+                  const nextSelectedKey = keys[0];
+                  if (typeof nextSelectedKey === 'string') {
+                    setSelectedGroupId(nextSelectedKey);
+                  }
+                }}
               />
             ) : (
               <Empty description="未找到匹配的资产分组" image={Empty.PRESENTED_IMAGE_SIMPLE} />

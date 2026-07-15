@@ -1,10 +1,10 @@
 {
-  "name": "Ant Design Pro",
-  "short_name": "Ant Design Pro",
+  "name": "MINGJIE DCG",
+  "short_name": "DCG",
   "display": "standalone",
   "start_url": "./?utm_source=homescreen",
-  "theme_color": "#002140",
-  "background_color": "#001529",
+  "theme_color": "#12212a",
+  "background_color": "#12212a",
   "icons": [
     {
       "src": "icons/icon-192x192.png",

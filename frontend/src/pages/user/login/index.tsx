@@ -88,7 +88,7 @@ const Login: React.FC = () => {
       <Helmet><title>{intl.formatMessage({ id: 'menu.login', defaultMessage: '登录' })}{Settings.title && ` - ${Settings.title}`}</title></Helmet>
       <div className="login-language"><SelectLang /></div>
       <section className="login-showcase">
-        <div className="showcase-mark"><span>MJ</span></div>
+        <div className="showcase-mark"><img src={Settings.logo} alt="MingJie DCG" /></div>
         <p className="showcase-kicker">DATA · CLASSIFICATION · GOVERNANCE</p>
         <h1>让数据，<br /><em>更有秩序。</em></h1>
         <p className="showcase-copy">MingJie DCG 为企业提供可信、可控、可持续的数据治理能力。</p>
@@ -97,7 +97,7 @@ const Login: React.FC = () => {
       </section>
       <section className="login-panel">
         <div className="login-card">
-          <div className="brand-mobile"><div className="brand-symbol">MJ</div><span>MINGJIE <small>DCG</small></span></div>
+          <div className="brand-mobile"><img className="brand-symbol" src={Settings.logo} alt="" /><span>MINGJIE <small>DCG</small></span></div>
           <div className="login-heading"><span>欢迎回来</span><h2>登录工作台</h2><p>使用您的账号继续访问数据治理平台</p></div>
           <div className="login-tabs" role="tablist">
             <button type="button" className={mode === 'account' ? 'active' : ''} onClick={() => { setMode('account'); setError(''); }}><FormattedMessage id="pages.login.accountLogin.tab" defaultMessage="账号登录" /></button>
