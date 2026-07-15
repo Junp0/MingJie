@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="frontend/public/logo.svg" alt="MingJie DCG logo" width="96" />
+</p>
+
+<p align="center">
   <strong>MingJie 数据分类分级治理平台</strong>
 </p>
 
@@ -72,6 +76,10 @@
 ## 部署效果截图
 
 Docker 部署成功后访问 `http://localhost:8000`，可以看到以下产品界面：
+
+### 登录页
+
+![MingJie 登录页](docs/screenshots/login.png)
 
 ### 仪表盘
 
