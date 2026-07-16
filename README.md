@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/logo.svg" alt="MingJie DCG logo" width="96" />
+  <img src="frontend/public/logo.svg?v=20260716" alt="MingJie DCG logo" width="96" />
 </p>
 
 <p align="center">
@@ -79,23 +79,23 @@ Docker 部署成功后访问 `http://localhost:8000`，可以看到以下产品�
 
 ### 登录页
 
-![MingJie 登录页](docs/screenshots/login.png)
+![MingJie 登录页](docs/screenshots/login.png?v=20260716)
 
 ### 仪表盘
 
-![MingJie 仪表盘](docs/screenshots/dashboard.png)
+![MingJie 仪表盘](docs/screenshots/dashboard.png?v=20260716)
 
 ### 库表数据列表
 
-![MingJie 库表数据列表](docs/screenshots/data-overview-fields.png)
+![MingJie 库表数据列表](docs/screenshots/data-overview-fields.png?v=20260716)
 
 ### 数据资产发现
 
-![MingJie 数据资产发现](docs/screenshots/data-asset-discovery.png)
+![MingJie 数据资产发现](docs/screenshots/data-asset-discovery.png?v=20260716)
 
 ### 分类分级模板
 
-![MingJie 分类分级模板](docs/screenshots/classification-template.png)
+![MingJie 分类分级模板](docs/screenshots/classification-template.png?v=20260716)
 
 默认模板的标准依据、分级边界和规则维护方法见 [分类分级基线说明](docs/classification-grading-baseline.md)。
 内置加密与脱敏识别范围、格式来源和识别边界见 [加密与脱敏特征基线](docs/protection-feature-catalog.md)。
